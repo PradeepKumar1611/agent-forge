@@ -862,6 +862,9 @@ async function generateProject() {
 
     const pRes = await fetch(`/api/projects/${currentProject.id}`);
     currentProject = await pRes.json();
+    // Re-render the Skills tab now that the project is generated, so the
+    // per-skill "Regenerate" buttons appear.
+    renderSkills(currentProject.skills || currentProject.sub_agents, currentProject.tools_needed, currentProject.mcp_servers);
     updateActions();
   } catch (e) {
     hideThinking();
