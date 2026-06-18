@@ -4,11 +4,14 @@ Uses a simple JSON file for users and JSONL file for activity logs.
 No database required.
 """
 import hashlib
+import hmac
 import json
 import os
 from datetime import datetime
 from functools import wraps
 from pathlib import Path
+
+import bcrypt
 
 from flask import jsonify, redirect, request, session, url_for
 
@@ -18,9 +21,33 @@ ACTIVITY_LOG = BASE_DIR / "logs" / "activity.jsonl"
 
 
 def _hash_password(password):
-    """Hash password with SHA-256 + salt."""
-    salt = "agent-factory-salt"  # Simple fixed salt — adequate for file-based auth
+    """Hash a password with bcrypt (per-password random salt)."""
+    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+
+
+def _legacy_sha256(password):
+    """Legacy hashing scheme (fixed-salt SHA-256). Kept ONLY to verify pre-existing
+    accounts so they can be transparently migrated to bcrypt on next login."""
+    salt = "agent-factory-salt"
     return hashlib.sha256(f"{salt}:{password}".encode()).hexdigest()
+
+
+def _verify_password(password, stored_hash):
+    """Verify a password against a stored hash.
+
+    Returns (is_valid, needs_rehash). needs_rehash is True when the stored hash
+    used the legacy SHA-256 scheme and should be upgraded to bcrypt.
+    """
+    if not stored_hash:
+        return False, False
+    if stored_hash.startswith("$2"):  # bcrypt hash
+        try:
+            return bcrypt.checkpw(password.encode("utf-8"), stored_hash.encode("utf-8")), False
+        except ValueError:
+            return False, False
+    # Legacy SHA-256 hex digest
+    is_valid = hmac.compare_digest(stored_hash, _legacy_sha256(password))
+    return is_valid, is_valid
 
 
 def _load_users():
@@ -57,12 +84,21 @@ def init_users():
 
 
 def authenticate(username, password):
-    """Verify username/password. Returns user dict or None."""
+    """Verify username/password. Returns user dict or None.
+
+    Transparently upgrades legacy SHA-256 hashes to bcrypt on successful login.
+    """
     users = _load_users()
     user = users.get(username)
-    if user and user["password_hash"] == _hash_password(password):
-        return user
-    return None
+    if not user:
+        return None
+    is_valid, needs_rehash = _verify_password(password, user.get("password_hash", ""))
+    if not is_valid:
+        return None
+    if needs_rehash:
+        user["password_hash"] = _hash_password(password)
+        _save_users(users)
+    return user
 
 
 def get_current_user():
@@ -144,7 +180,8 @@ def change_password(username, old_password, new_password):
     user = users.get(username)
     if not user:
         return False, "User not found"
-    if user["password_hash"] != _hash_password(old_password):
+    is_valid, _ = _verify_password(old_password, user.get("password_hash", ""))
+    if not is_valid:
         return False, "Current password is incorrect"
     if len(new_password) < 4:
         return False, "New password must be at least 4 characters"

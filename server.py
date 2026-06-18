@@ -6,9 +6,10 @@ Security, Claude CLI, and file generation logic live in separate modules.
 import json
 import os
 import re
+import shutil
 import uuid
 import zipfile
-from datetime import datetime
+from datetime import datetime, timedelta
 from io import BytesIO
 from pathlib import Path
 
@@ -28,7 +29,7 @@ from auth import (
     login_required,
 )
 from claude_client import run_claude_code, extract_json_from_text
-from database import init_db, create_project as db_create, get_project as _db_get_raw, save_project as db_save, list_projects_for_user as _db_list_raw
+from database import init_db, create_project as db_create, get_project as _db_get_raw, save_project as db_save, list_projects_for_user as _db_list_raw, delete_project as db_delete
 from generator import generate_project_files
 from security import (
     SECURITY_PROMPT_SUFFIX,
@@ -53,10 +54,21 @@ _secret_key = os.environ.get("FLASK_SECRET_KEY")
 if not _secret_key:
     _env_path = BASE_DIR / ".env"
     _secret_key = os.urandom(24).hex()
-    # Append to .env so it persists
-    with open(_env_path, "a") as f:
-        f.write(f"\nFLASK_SECRET_KEY={_secret_key}\n")
+    # Append to .env so it persists — only if not already present (idempotent)
+    _existing_env = _env_path.read_text() if _env_path.exists() else ""
+    if "FLASK_SECRET_KEY=" not in _existing_env:
+        with open(_env_path, "a") as f:
+            f.write(f"\nFLASK_SECRET_KEY={_secret_key}\n")
 app.config["SECRET_KEY"] = _secret_key
+
+# Session cookie hardening. SESSION_COOKIE_SECURE is opt-in via env so local
+# (HTTP) development still works; set it to "true" behind HTTPS in production.
+app.config.update(
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE="Lax",
+    SESSION_COOKIE_SECURE=os.environ.get("SESSION_COOKIE_SECURE", "").lower() == "true",
+    PERMANENT_SESSION_LIFETIME=timedelta(hours=24),
+)
 
 # Initialize database and users
 init_db()
@@ -95,6 +107,26 @@ def db_get(project_id):
 
 def db_list(username, role):
     return [normalize_project(p) for p in _db_list_raw(username, role)]
+
+
+def project_access(project_id, *, write):
+    """Fetch a project and enforce access control.
+
+    Returns (project, None) when the current user may proceed, otherwise
+    (None, (response, status)) which the caller should return directly.
+
+    - write=True  → only the owner or an admin may access (mutating routes).
+    - write=False → owner/admin OR any public project (read-only routes).
+    """
+    project = db_get(project_id)
+    if not project:
+        return None, (jsonify({"error": "Project not found"}), 404)
+    username = session.get("username")
+    role = session.get("role")
+    is_owner = project.get("created_by") == username or role == "admin"
+    if is_owner or (not write and project.get("is_public")):
+        return project, None
+    return None, (jsonify({"error": "You don't have access to this project"}), 403)
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -262,9 +294,9 @@ def get_platforms():
 @app.route("/api/projects/<project_id>/tags", methods=["POST"])
 @login_required
 def update_tags(project_id):
-    project = db_get(project_id)
-    if not project:
-        return jsonify({"error": "Project not found"}), 404
+    project, err = project_access(project_id, write=True)
+    if err:
+        return err
     data = request.json or {}
     tags = data.get("tags", [])
     # Sanitize: lowercase, strip, deduplicate, max 10 tags
@@ -278,11 +310,9 @@ def update_tags(project_id):
 @app.route("/api/projects/<project_id>/visibility", methods=["POST"])
 @login_required
 def toggle_visibility(project_id):
-    project = db_get(project_id)
-    if not project:
-        return jsonify({"error": "Project not found"}), 404
-    if project.get("created_by") != session.get("username") and session.get("role") != "admin":
-        return jsonify({"error": "Only the owner can change visibility"}), 403
+    project, err = project_access(project_id, write=True)
+    if err:
+        return err
     data = request.json or {}
     project["is_public"] = bool(data.get("is_public", False))
     db_save(project)
@@ -294,9 +324,9 @@ def toggle_visibility(project_id):
 @app.route("/api/projects/<project_id>/clone", methods=["POST"])
 @login_required
 def clone_project(project_id):
-    source = db_get(project_id)
-    if not source:
-        return jsonify({"error": "Project not found"}), 404
+    source, err = project_access(project_id, write=False)
+    if err:
+        return err
 
     new_id = str(uuid.uuid4())[:8]
     username = session.get("username", "unknown")
@@ -329,9 +359,9 @@ def clone_project(project_id):
 @app.route("/api/projects/<project_id>/export", methods=["GET"])
 @login_required
 def export_project(project_id):
-    project = db_get(project_id)
-    if not project:
-        return jsonify({"error": "Project not found"}), 404
+    project, err = project_access(project_id, write=False)
+    if err:
+        return err
     export_data = {
         "name": project.get("name"),
         "description": project.get("description"),
@@ -398,11 +428,34 @@ def list_projects():
 @app.route("/api/projects/<project_id>", methods=["GET"])
 @login_required
 def get_project(project_id):
-    project = db_get(project_id)
-    if not project:
-        return jsonify({"error": "Project not found"}), 404
+    project, err = project_access(project_id, write=False)
+    if err:
+        return err
     safe_project = {k: v for k, v in project.items() if k != "secret_values"}
     return jsonify(safe_project)
+
+
+@app.route("/api/projects/<project_id>", methods=["DELETE"])
+@login_required
+def delete_project_route(project_id):
+    project, err = project_access(project_id, write=True)
+    if err:
+        return err
+
+    # Best-effort cleanup of generated files on disk
+    project_dir_str = project.get("project_dir")
+    if project_dir_str:
+        try:
+            project_dir = Path(project_dir_str).resolve()
+            # Safety: only remove directories under PROJECTS_DIR
+            if project_dir.exists() and PROJECTS_DIR.resolve() in project_dir.parents:
+                shutil.rmtree(project_dir, ignore_errors=True)
+        except (OSError, ValueError):
+            pass
+
+    db_delete(project_id)
+    log_activity(session.get("username"), "delete_project", project_id, project.get("name"))
+    return jsonify({"message": "Project deleted"})
 
 
 # ── Describe (design agent system from description) ──
@@ -410,9 +463,9 @@ def get_project(project_id):
 @app.route("/api/projects/<project_id>/describe", methods=["POST"])
 @login_required
 def describe_project(project_id):
-    project = db_get(project_id)
-    if not project:
-        return jsonify({"error": "Project not found"}), 404
+    project, err = project_access(project_id, write=True)
+    if err:
+        return err
 
     data = request.json or {}
     log_activity(session.get("username"), "describe", project_id, data.get("description", "")[:200])
@@ -446,6 +499,8 @@ Important:
 Respond with ONLY the JSON object."""
 
     result = run_claude_code(prompt, project_id)
+    if result.get("error"):
+        return jsonify({"error": f"Design failed: {result.get('text', 'Claude Code error')}"}), 502
     response_text = result.get("text", "")
 
     try:
@@ -496,9 +551,9 @@ Respond with ONLY the JSON object."""
 @app.route("/api/projects/<project_id>/chat", methods=["POST"])
 @login_required
 def chat_with_project(project_id):
-    project = db_get(project_id)
-    if not project:
-        return jsonify({"error": "Project not found"}), 404
+    project, err = project_access(project_id, write=True)
+    if err:
+        return err
 
     data = request.json or {}
     user_message = sanitize_input(data.get("message", ""))
@@ -530,6 +585,8 @@ If no structural changes needed, just respond with a JSON object with "message" 
 Respond with ONLY the JSON object."""
 
     result = run_claude_code(context, project_id)
+    if result.get("error"):
+        return jsonify({"error": f"Chat failed: {result.get('text', 'Claude Code error')}"}), 502
     response_text = result.get("text", "")
 
     try:
@@ -570,9 +627,9 @@ Respond with ONLY the JSON object."""
 @app.route("/api/projects/<project_id>/form-values", methods=["POST"])
 @login_required
 def save_form_values(project_id):
-    project = db_get(project_id)
-    if not project:
-        return jsonify({"error": "Project not found"}), 404
+    project, err = project_access(project_id, write=True)
+    if err:
+        return err
 
     data = request.json or {}
     values = data.get("values", {})
@@ -600,9 +657,9 @@ def save_form_values(project_id):
 @app.route("/api/projects/<project_id>/design-dashboard", methods=["POST"])
 @login_required
 def design_dashboard(project_id):
-    project = db_get(project_id)
-    if not project:
-        return jsonify({"error": "Project not found"}), 404
+    project, err = project_access(project_id, write=True)
+    if err:
+        return err
 
     prompt = f"""Design dashboard metrics for a multi-skill agent system.
 Project: {project['name']}
@@ -617,6 +674,8 @@ Include 4-8 meaningful metrics that cover progress, errors, timing, and per-agen
 Respond with ONLY the JSON object."""
 
     result = run_claude_code(prompt, project_id)
+    if result.get("error"):
+        return jsonify({"error": f"Dashboard design failed: {result.get('text', 'Claude Code error')}"}), 502
     response_text = result.get("text", "")
 
     try:
@@ -653,9 +712,9 @@ Respond with ONLY the JSON object."""
 @app.route("/api/projects/<project_id>/generate", methods=["POST"])
 @login_required
 def generate_project(project_id):
-    project = db_get(project_id)
-    if not project:
-        return jsonify({"error": "Project not found"}), 404
+    project, err = project_access(project_id, write=True)
+    if err:
+        return err
 
     # Check if platform was passed in request body
     data = request.json or {}
@@ -683,9 +742,9 @@ def generate_project(project_id):
 @app.route("/api/projects/<project_id>/download", methods=["GET"])
 @login_required
 def download_project(project_id):
-    project = db_get(project_id)
-    if not project:
-        return jsonify({"error": "Project not found"}), 404
+    project, err = project_access(project_id, write=False)
+    if err:
+        return err
 
     project_dir_str = project.get("project_dir")
     if not project_dir_str:
@@ -717,9 +776,9 @@ def download_project(project_id):
 @app.route("/api/projects/<project_id>/state", methods=["GET"])
 @login_required
 def get_project_state(project_id):
-    project = db_get(project_id)
-    if not project:
-        return jsonify({"error": "Project not found"}), 404
+    project, err = project_access(project_id, write=False)
+    if err:
+        return err
 
     project_dir_str = project.get("project_dir")
     if not project_dir_str:
@@ -740,5 +799,7 @@ def get_project_state(project_id):
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", "5000"))
+    # Debug (and the interactive Werkzeug debugger) is OFF unless explicitly opted in.
+    debug_mode = os.environ.get("FLASK_DEBUG", "").lower() == "true"
     print(f"Agent Factory running at http://localhost:{port}")
-    app.run(host="0.0.0.0", port=port, debug=True, threaded=True)
+    app.run(host="0.0.0.0", port=port, debug=debug_mode, threaded=True)
