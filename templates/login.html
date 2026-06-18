@@ -7,19 +7,22 @@
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-body{background:#08090d;color:#e2e8f0;font-family:'DM Sans',sans-serif;display:flex;align-items:center;justify-content:center;height:100vh}
-.login-card{background:#12131a;border:1px solid rgba(255,255,255,0.06);border-radius:16px;padding:40px;width:380px;text-align:center}
-.logo{font-size:40px;margin-bottom:8px}
-h1{font-size:22px;font-weight:700;margin-bottom:4px;background:linear-gradient(135deg,#4f7df8,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
-.subtitle{color:#64748b;font-size:13px;margin-bottom:28px}
+body{background:#080910;color:#dbe2f0;font-family:'DM Sans',sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:20px;position:relative;overflow:hidden;-webkit-font-smoothing:antialiased}
+body::before{content:"";position:fixed;inset:0;pointer-events:none;background:
+  radial-gradient(700px 480px at 18% 0%,rgba(91,140,255,.22),transparent 60%),
+  radial-gradient(700px 480px at 100% 100%,rgba(167,139,250,.20),transparent 55%)}
+.login-card{position:relative;z-index:1;background:rgba(21,23,42,.7);backdrop-filter:blur(18px) saturate(140%);-webkit-backdrop-filter:blur(18px) saturate(140%);border:1px solid rgba(255,255,255,0.1);border-radius:22px;padding:44px 40px;width:400px;max-width:100%;text-align:center;box-shadow:0 30px 80px rgba(0,0,0,.55)}
+.logo{width:62px;height:62px;margin:0 auto 16px;border-radius:18px;display:grid;place-items:center;font-size:30px;background:linear-gradient(135deg,#5b8cff,#a78bfa);box-shadow:0 10px 30px rgba(91,140,255,.5)}
+h1{font-size:26px;font-weight:800;letter-spacing:-.02em;margin-bottom:6px;background:linear-gradient(120deg,#dce8ff,#c9b8ff 55%,#a78bfa);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.subtitle{color:#8a93ab;font-size:13px;margin-bottom:30px}
 .form-group{margin-bottom:16px;text-align:left}
-.form-group label{display:block;font-size:12px;color:#94a3b8;margin-bottom:6px;font-weight:500}
-.form-group input{width:100%;padding:12px 16px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);background:#1e2030;color:#e2e8f0;font-size:14px;font-family:'DM Sans',sans-serif}
-.form-group input:focus{outline:none;border-color:#4f7df8}
-.btn{width:100%;padding:12px;border-radius:8px;border:none;background:#4f7df8;color:white;font-size:15px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;margin-top:8px;transition:background .2s}
-.btn:hover{background:#3b6de0}
-.btn:disabled{opacity:0.5;cursor:not-allowed}
-.error{color:#f87171;font-size:13px;margin-top:12px;display:none}
+.form-group label{display:block;font-size:12px;color:#8a93ab;margin-bottom:7px;font-weight:600}
+.form-group input{width:100%;padding:13px 16px;border-radius:11px;border:1px solid rgba(255,255,255,0.12);background:#171a28;color:#dbe2f0;font-size:14px;font-family:inherit;transition:border-color .2s,box-shadow .2s}
+.form-group input:focus{outline:none;border-color:#5b8cff;box-shadow:0 0 0 3px rgba(91,140,255,.15)}
+.btn{width:100%;padding:13px;border-radius:12px;border:none;background:linear-gradient(135deg,#5b8cff,#a78bfa);color:#fff;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;margin-top:10px;transition:transform .18s,box-shadow .18s,opacity .2s;box-shadow:0 8px 22px rgba(91,140,255,.45)}
+.btn:hover{transform:translateY(-1px);box-shadow:0 11px 28px rgba(91,140,255,.6)}
+.btn:disabled{opacity:0.5;cursor:not-allowed;transform:none;box-shadow:none}
+.error{color:#fb7185;font-size:13px;margin-top:14px;display:none}
 </style>
 </head>
 <body>
