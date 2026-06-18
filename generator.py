@@ -167,6 +167,41 @@ def _generate_all_skills(project, sub_agents, dashboard_metrics, form_values, pr
     return generated
 
 
+def _skill_frontmatter(folder_name, description):
+    return f"---\nname: {folder_name}\ndescription: {(description or '')[:200]}\n---\n\n"
+
+
+def regenerate_one_skill(project, skill_index, project_id):
+    """Regenerate a single skill's SKILL.md in an already-generated project.
+
+    Returns the project-relative path written. Raises ValueError for bad input
+    and RuntimeError if Claude generation fails.
+    """
+    sub_agents = project.get("skills") or project.get("sub_agents") or []
+    if skill_index < 0 or skill_index >= len(sub_agents):
+        raise ValueError("Skill index out of range")
+    project_dir = project.get("project_dir")
+    if not project_dir or not Path(project_dir).exists():
+        raise ValueError("Project has not been generated yet")
+
+    agent = sub_agents[skill_index]
+    content = _generate_skill_instruction(
+        project, sub_agents, skill_index,
+        project.get("dashboard_metrics", []), project.get("form_values", {}),
+        project_id, GENERATION_MODEL,
+    )
+    if not content:
+        raise RuntimeError("Skill regeneration failed (Claude returned no content)")
+
+    folder_name = _skill_folder_name(agent.get("name", "Agent"))
+    skill_folder = Path(project_dir) / "skills" / folder_name
+    skill_folder.mkdir(parents=True, exist_ok=True)
+    if not content.startswith("---"):
+        content = _skill_frontmatter(folder_name, agent.get("description", "")) + content
+    (skill_folder / "SKILL.md").write_text(content)
+    return f"skills/{folder_name}/SKILL.md"
+
+
 def generate_project_files(project, project_id, projects_dir, progress_cb=None):
     """Generate all project files. Returns (generated_files, project_dir).
 

@@ -1,0 +1,26 @@
+{
+  "name": "Website Uptime Monitor",
+  "description": "Monitors a list of website URLs for uptime, checks SSL certificate expiry and response time, and emails a summary report when a site is down or a certificate is expiring soon.",
+  "tags": ["monitoring", "uptime", "ssl", "starter"],
+  "target_platform": "claude_code",
+  "form_fields": [
+    {"id": "target_urls", "label": "Target URLs", "type": "textarea", "placeholder": "https://example.com\nhttps://api.example.com", "required": true, "is_secret": false, "description": "One URL per line to monitor", "group": "Targets"},
+    {"id": "ssl_warn_days", "label": "SSL Expiry Warning (days)", "type": "number", "placeholder": "14", "required": true, "is_secret": false, "description": "Warn when a certificate expires within this many days", "group": "Targets", "default": "14"},
+    {"id": "smtp_host", "label": "SMTP Host", "type": "text", "placeholder": "smtp.gmail.com", "required": true, "is_secret": false, "description": "SMTP server for sending the summary email", "group": "Email"},
+    {"id": "smtp_user", "label": "SMTP Username", "type": "text", "placeholder": "alerts@example.com", "required": true, "is_secret": false, "description": "SMTP login", "group": "Email"},
+    {"id": "smtp_password", "label": "SMTP Password", "type": "password", "placeholder": "", "required": true, "is_secret": true, "description": "SMTP password / app password", "group": "Email"},
+    {"id": "alert_recipient", "label": "Alert Recipient", "type": "text", "placeholder": "oncall@example.com", "required": true, "is_secret": false, "description": "Where to send the summary report", "group": "Email"},
+    {"id": "report_format", "label": "Report Format", "type": "select", "options": ["HTML", "PDF", "Markdown", "JSON"], "required": true, "is_secret": false, "description": "Format for the final output report", "group": "Report Output", "default": "HTML"},
+    {"id": "report_output_dir", "label": "Report Output Directory", "type": "text", "placeholder": "./reports", "required": false, "is_secret": false, "description": "Directory where the final report will be saved", "group": "Report Output"}
+  ],
+  "skills": [
+    {"name": "Load Monitor Targets", "description": "Read and validate the list of target URLs and monitoring thresholds from config.", "skill_file": "01_load_monitor_targets.md", "inputs": ["target_urls", "ssl_warn_days"], "outputs": ["validated target list"]},
+    {"name": "Probe Uptime And Latency", "description": "Send HTTP requests to each target, recording status code and response time.", "skill_file": "02_probe_uptime_and_latency.md", "inputs": ["validated target list"], "outputs": ["uptime results"]},
+    {"name": "Inspect SSL Certificates", "description": "Check each HTTPS target's certificate expiry against the warning threshold.", "skill_file": "03_inspect_ssl_certificates.md", "inputs": ["validated target list", "ssl_warn_days"], "outputs": ["ssl results"]},
+    {"name": "Evaluate Alerts", "description": "Combine uptime and SSL results and decide which issues warrant an alert.", "skill_file": "04_evaluate_alerts.md", "inputs": ["uptime results", "ssl results"], "outputs": ["alert list"]},
+    {"name": "Send Email Summary", "description": "Email the alert summary to the recipient via SMTP.", "skill_file": "05_send_email_summary.md", "inputs": ["alert list", "smtp_host", "smtp_user", "smtp_password", "alert_recipient"], "outputs": ["sent confirmation"]},
+    {"name": "Generate Monitoring Report", "description": "Render the full monitoring run as a report in the chosen format and save it.", "skill_file": "06_generate_monitoring_report.md", "inputs": ["uptime results", "ssl results", "alert list", "report_format", "report_output_dir"], "outputs": ["report file"]}
+  ],
+  "tools_needed": ["python3", "curl", "openssl"],
+  "mcp_servers": []
+}

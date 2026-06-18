@@ -1,0 +1,21 @@
+{
+  "name": "API Doc Generator",
+  "description": "Parses a source code repository, extracts API signatures and docstrings, generates formatted reference documentation with examples, and publishes a report.",
+  "tags": ["documentation", "codebase", "starter"],
+  "target_platform": "claude_code",
+  "form_fields": [
+    {"id": "repo_path", "label": "Repository Path", "type": "text", "placeholder": "/path/to/repo", "required": true, "is_secret": false, "description": "Local path to the source repository to document", "group": "Source"},
+    {"id": "language", "label": "Primary Language", "type": "select", "options": ["python", "javascript", "typescript", "go", "java"], "required": true, "is_secret": false, "description": "Primary language of the codebase", "group": "Source", "default": "python"},
+    {"id": "include_globs", "label": "Include Globs", "type": "text", "placeholder": "src/**/*.py", "required": false, "is_secret": false, "description": "Comma-separated globs of files to include", "group": "Source"},
+    {"id": "report_format", "label": "Report Format", "type": "select", "options": ["HTML", "PDF", "Markdown", "JSON"], "required": true, "is_secret": false, "description": "Format for the final documentation report", "group": "Report Output", "default": "HTML"},
+    {"id": "report_output_dir", "label": "Report Output Directory", "type": "text", "placeholder": "./reports", "required": false, "is_secret": false, "description": "Directory where the documentation will be saved", "group": "Report Output"}
+  ],
+  "skills": [
+    {"name": "Discover Source Files", "description": "Walk the repository and collect the set of source files matching the include globs.", "skill_file": "01_discover_source_files.md", "inputs": ["repo_path", "include_globs", "language"], "outputs": ["file list"]},
+    {"name": "Extract API Signatures", "description": "Parse each source file to extract public functions, classes, signatures, and docstrings.", "skill_file": "02_extract_api_signatures.md", "inputs": ["file list", "language"], "outputs": ["api model"]},
+    {"name": "Generate Examples", "description": "Produce concise usage examples for each documented API element.", "skill_file": "03_generate_examples.md", "inputs": ["api model"], "outputs": ["examples"]},
+    {"name": "Render Documentation Report", "description": "Assemble the API model and examples into a formatted report and save it.", "skill_file": "04_render_documentation_report.md", "inputs": ["api model", "examples", "report_format", "report_output_dir"], "outputs": ["report file"]}
+  ],
+  "tools_needed": ["python3", "grep", "git"],
+  "mcp_servers": []
+}

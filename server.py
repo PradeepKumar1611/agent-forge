@@ -31,7 +31,7 @@ from auth import (
 import jobs
 from claude_client import run_claude_code, extract_json_from_text
 from database import init_db, create_project as db_create, get_project as _db_get_raw, save_project as db_save, list_projects_for_user as _db_list_raw, delete_project as db_delete
-from generator import generate_project_files
+from generator import generate_project_files, regenerate_one_skill
 from security import (
     SECURITY_PROMPT_SUFFIX,
     register_middleware,
@@ -43,6 +43,9 @@ load_dotenv()
 BASE_DIR = Path(__file__).resolve().parent
 PROJECTS_DIR = BASE_DIR / "generated_projects"
 PROJECTS_DIR.mkdir(exist_ok=True)
+TEMPLATES_DIR = BASE_DIR / "template_library"
+TEMPLATES_DIR.mkdir(exist_ok=True)
+MAX_VERSIONS = 10  # design snapshots kept per project
 
 app = Flask(
     __name__,
@@ -128,6 +131,24 @@ def project_access(project_id, *, write):
     if is_owner or (not write and project.get("is_public")):
         return project, None
     return None, (jsonify({"error": "You don't have access to this project"}), 403)
+
+
+def snapshot_version(project):
+    """Append a compact snapshot of the current design to project['versions'].
+
+    Captures only the design (not generated files / secrets) so restore can roll
+    back form/skills/dashboard. Capped at MAX_VERSIONS most-recent entries.
+    """
+    versions = project.get("versions") or []
+    versions.append({
+        "ts": datetime.now().isoformat(),
+        "name": project.get("name"),
+        "status": project.get("status"),
+        "form_fields": project.get("form_fields", []),
+        "skills": project.get("skills", []),
+        "dashboard_metrics": project.get("dashboard_metrics", []),
+    })
+    project["versions"] = versions[-MAX_VERSIONS:]
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -414,13 +435,83 @@ def import_project():
     return jsonify(project), 201
 
 
+# ── Template library (starter / saved project designs) ──
+
+def _template_slug(name):
+    slug = re.sub(r"[^a-z0-9_-]+", "_", (name or "template").lower()).strip("_")
+    return slug or "template"
+
+
+@app.route("/api/templates", methods=["GET"])
+@login_required
+def list_templates():
+    items = []
+    for f in sorted(TEMPLATES_DIR.glob("*.json")):
+        try:
+            data = json.loads(f.read_text())
+        except (json.JSONDecodeError, OSError):
+            continue
+        skills = data.get("skills") or data.get("sub_agents") or []
+        items.append({
+            "slug": f.stem,
+            "name": data.get("name", f.stem),
+            "description": data.get("description", ""),
+            "tags": data.get("tags", []),
+            "skill_count": len(skills),
+            "field_count": len(data.get("form_fields", [])),
+        })
+    return jsonify(items)
+
+
+@app.route("/api/templates/<slug>", methods=["GET"])
+@login_required
+def get_template(slug):
+    f = TEMPLATES_DIR / f"{_template_slug(slug)}.json"
+    if not f.exists():
+        return jsonify({"error": "Template not found"}), 404
+    try:
+        return jsonify(json.loads(f.read_text()))
+    except (json.JSONDecodeError, OSError):
+        return jsonify({"error": "Template is corrupt"}), 500
+
+
+@app.route("/api/templates", methods=["POST"])
+@login_required
+def save_template():
+    """Save a project's design as a reusable template (shares the export schema)."""
+    data = request.json or {}
+    project, err = project_access(data.get("project_id", ""), write=False)
+    if err:
+        return err
+    skills = project.get("skills", [])
+    if not project.get("form_fields") or not skills:
+        return jsonify({"error": "Project must have form fields and skills to save as a template"}), 400
+    spec = {
+        "name": project.get("name", "Template"),
+        "description": project.get("description", ""),
+        "tags": project.get("tags", []),
+        "target_platform": project.get("target_platform", "claude_code"),
+        "form_fields": project.get("form_fields", []),
+        "skills": skills,
+        "sub_agents": skills,
+        "tools_needed": project.get("tools_needed", []),
+        "mcp_servers": project.get("mcp_servers", []),
+        "saved_at": datetime.now().isoformat(),
+        "saved_by": session.get("username"),
+    }
+    slug = _template_slug(spec["name"])
+    (TEMPLATES_DIR / f"{slug}.json").write_text(json.dumps(spec, indent=2))
+    log_activity(session.get("username"), "save_template", None, slug)
+    return jsonify({"message": f"Saved template '{spec['name']}'", "slug": slug}), 201
+
+
 @app.route("/api/projects", methods=["GET"])
 @login_required
 def list_projects():
     username = session.get("username")
     role = session.get("role")
     user_projects = [
-        {k: v for k, v in p.items() if k != "secret_values"}
+        {k: v for k, v in p.items() if k not in ("secret_values", "versions")}
         for p in db_list(username, role)
     ]
     return jsonify(user_projects)
@@ -457,6 +548,72 @@ def delete_project_route(project_id):
     db_delete(project_id)
     log_activity(session.get("username"), "delete_project", project_id, project.get("name"))
     return jsonify({"message": "Project deleted"})
+
+
+@app.route("/api/projects/<project_id>/rename", methods=["POST"])
+@login_required
+def rename_project(project_id):
+    project, err = project_access(project_id, write=True)
+    if err:
+        return err
+    data = request.json or {}
+    new_name = sanitize_input(data.get("name", "")).strip()[:100]
+    if not new_name:
+        return jsonify({"error": "Name cannot be empty"}), 400
+    project["name"] = new_name
+    db_save(project)
+    log_activity(session.get("username"), "rename_project", project_id, new_name)
+    return jsonify({"name": new_name})
+
+
+# ── Project version history ──
+
+@app.route("/api/projects/<project_id>/versions", methods=["GET"])
+@login_required
+def list_versions(project_id):
+    project, err = project_access(project_id, write=False)
+    if err:
+        return err
+    versions = project.get("versions") or []
+    summary = [
+        {
+            "index": i,
+            "ts": v.get("ts"),
+            "name": v.get("name"),
+            "status": v.get("status"),
+            "skill_count": len(v.get("skills", [])),
+            "field_count": len(v.get("form_fields", [])),
+        }
+        for i, v in enumerate(versions)
+    ]
+    return jsonify(summary)
+
+
+@app.route("/api/projects/<project_id>/versions/<int:index>/restore", methods=["POST"])
+@login_required
+def restore_version(project_id, index):
+    project, err = project_access(project_id, write=True)
+    if err:
+        return err
+    versions = project.get("versions") or []
+    if index < 0 or index >= len(versions):
+        return jsonify({"error": "Version not found"}), 404
+    # Snapshot current state first so a restore is itself reversible.
+    snapshot_version(project)
+    v = versions[index]
+    project["form_fields"] = v.get("form_fields", [])
+    project["skills"] = v.get("skills", [])
+    project["sub_agents"] = project["skills"]
+    project["dashboard_metrics"] = v.get("dashboard_metrics", [])
+    db_save(project)
+    log_activity(session.get("username"), "restore_version", project_id, str(index))
+    return jsonify({
+        "message": f"Restored design from {v.get('ts', 'snapshot')}",
+        "form_fields": project["form_fields"],
+        "skills": project["skills"],
+        "sub_agents": project["skills"],
+        "dashboard_metrics": project["dashboard_metrics"],
+    })
 
 
 # ── Describe (design agent system from description) ──
@@ -597,6 +754,7 @@ Respond with ONLY the JSON object."""
 
     def _work(job_id):
         jobs.set_progress(job_id, 15, "Updating your design…")
+        snapshot_version(project)  # capture design before this refinement
         result = run_claude_code(context, project_id)
         if result.get("error"):
             raise RuntimeError(f"Chat failed: {result.get('text', 'Claude Code error')}")
@@ -693,6 +851,7 @@ Respond with ONLY the JSON object."""
 
     def _work(job_id):
         jobs.set_progress(job_id, 15, "Designing dashboard metrics…")
+        snapshot_version(project)  # capture design before (re)designing the dashboard
         result = run_claude_code(prompt, project_id)
         if result.get("error"):
             raise RuntimeError(f"Dashboard design failed: {result.get('text', 'Claude Code error')}")
@@ -762,6 +921,32 @@ def generate_project(project_id):
             "files": generated_files,
             "project_dir": project_dir,
         }
+
+    jobs.run(job_id, _work)
+    return jsonify({"job_id": job_id}), 202
+
+
+# ── Regenerate a single skill (re-roll one SKILL.md) ──
+
+@app.route("/api/projects/<project_id>/skills/<int:skill_index>/regenerate", methods=["POST"])
+@login_required
+def regenerate_skill(project_id, skill_index):
+    project, err = project_access(project_id, write=True)
+    if err:
+        return err
+    if not project.get("project_dir"):
+        return jsonify({"error": "Generate the project before regenerating a skill"}), 400
+    skills = project.get("skills") or project.get("sub_agents") or []
+    if skill_index < 0 or skill_index >= len(skills):
+        return jsonify({"error": "Skill not found"}), 404
+
+    job_id = jobs.create_job(owner=session.get("username"), kind="regenerate-skill")
+
+    def _work(job_id):
+        name = skills[skill_index].get("name", f"skill {skill_index + 1}")
+        jobs.set_progress(job_id, 20, f"Regenerating skill: {name}…")
+        rel_path = regenerate_one_skill(project, skill_index, project_id)
+        return {"message": f"Regenerated {name}", "path": rel_path}
 
     jobs.run(job_id, _work)
     return jsonify({"job_id": job_id}), 202

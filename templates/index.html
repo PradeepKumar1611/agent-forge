@@ -215,6 +215,7 @@ select.form-input{cursor:pointer}
   <div class="header-actions">
     <button class="header-btn" onclick="newProject()">+ New Project</button>
     <button class="header-btn" onclick="importProject()">📥 Import</button>
+    <button class="header-btn" onclick="showTemplates()">📚 Templates</button>
     <button class="header-btn" onclick="showProjectBrowser()">📂 Projects</button>
     <span id="userInfo" style="display:flex;align-items:center;gap:8px;color:var(--text-dim);font-size:13px">
       <span id="userName"></span>
@@ -252,6 +253,32 @@ select.form-input{cursor:pointer}
         <input class="search-input" id="projectSearch" placeholder="Search by name or tag..." oninput="filterProjects()">
       </div>
       <div id="projectList"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Templates Modal -->
+<div class="modal-overlay" id="templatesModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>📚 Starter Templates</h2>
+      <button class="modal-close" onclick="closeTemplates()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="templateList"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Version History Modal -->
+<div class="modal-overlay" id="historyModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>🕑 Version History</h2>
+      <button class="modal-close" onclick="closeHistory()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="historyList"></div>
     </div>
   </div>
 </div>
@@ -567,7 +594,7 @@ function updateActions() {
     </select><button class="card-btn card-btn-primary" onclick="generateProject()">⚡ Generate Project</button><button class="card-btn card-btn-secondary" onclick="requestDashboardChanges()">✏️ Request Changes</button>`;
   } else if (currentTab === 'download' && currentProject && currentProject.generated_files && currentProject.generated_files.length) {
     const pubIcon = currentProject.is_public ? '🌐 Public' : '🔒 Private';
-    html = `<button class="card-btn card-btn-primary" onclick="downloadProject()">⬇ Download ZIP</button><button class="card-btn card-btn-secondary" onclick="cloneProject()">📋 Clone</button><button class="card-btn card-btn-secondary" onclick="exportProject()">📤 Export</button><button class="card-btn card-btn-secondary" onclick="editTags()">🏷 Tags</button><button class="card-btn card-btn-secondary" onclick="togglePublic()">${pubIcon}</button>`;
+    html = `<button class="card-btn card-btn-primary" onclick="downloadProject()">⬇ Download ZIP</button><button class="card-btn card-btn-secondary" onclick="cloneProject()">📋 Clone</button><button class="card-btn card-btn-secondary" onclick="exportProject()">📤 Export</button><button class="card-btn card-btn-secondary" onclick="saveAsTemplate()">📚 Save as Template</button><button class="card-btn card-btn-secondary" onclick="renameProject()">✏️ Rename</button><button class="card-btn card-btn-secondary" onclick="showHistory()">🕑 History</button><button class="card-btn card-btn-secondary" onclick="editTags()">🏷 Tags</button><button class="card-btn card-btn-secondary" onclick="togglePublic()">${pubIcon}</button><button class="card-btn card-btn-secondary" onclick="deleteCurrentProject()">🗑 Delete</button>`;
   }
   previewActions.innerHTML = html;
   previewActions.style.display = html ? 'flex' : 'none';
@@ -615,10 +642,12 @@ function renderForm(fields) {
 function renderSkills(agents, tools, mcpServers) {
   let html = '';
 
+  const isGenerated = !!(currentProject && currentProject.generated_files && currentProject.generated_files.length);
   if (agents && agents.length) {
     agents.forEach((a, i) => {
       const skillName = (a.skill_file || a.instruction_file || a.name || '').replace(/^\d+_/, '').replace(/\.md$/, '').replace(/_/g, ' ');
-      html += `<div class="agent-item"><div class="agent-num">${i + 1}</div><div class="agent-info"><h4>${escHtml(a.name)}</h4><p>${escHtml(a.description)}</p><div class="agent-file">skills/${escHtml(skillName.replace(/ /g, '_'))}/SKILL.md</div></div></div>`;
+      const regen = isGenerated ? `<button class="card-btn card-btn-secondary" style="margin-top:6px;font-size:11px;padding:4px 8px" onclick="regenerateSkill(${i})">🔄 Regenerate</button>` : '';
+      html += `<div class="agent-item"><div class="agent-num">${i + 1}</div><div class="agent-info"><h4>${escHtml(a.name)}</h4><p>${escHtml(a.description)}</p><div class="agent-file">skills/${escHtml(skillName.replace(/ /g, '_'))}/SKILL.md</div>${regen}</div></div>`;
     });
   }
 
@@ -994,6 +1023,8 @@ function renderProjectList(projects) {
     if (hasFiles) actions += `<button onclick="browserDownload('${p.id}')">⬇ Download</button>`;
     actions += `<button onclick="browserClone('${p.id}')">📋 Clone</button>`;
     actions += `<button onclick="browserExport('${p.id}')">📤 Export</button>`;
+    actions += `<button onclick="browserRename('${p.id}')">✏️ Rename</button>`;
+    actions += `<button onclick="browserDelete('${p.id}')">🗑 Delete</button>`;
     if (window._userRole === 'admin') {
       const toggleLabel = p.is_public ? '🔒 Make Private' : '🌐 Make Public';
       actions += `<button onclick="browserToggleVisibility('${p.id}', ${!p.is_public})">${toggleLabel}</button>`;
@@ -1038,6 +1069,154 @@ async function browserExport(pid) {
     a.click();
     URL.revokeObjectURL(url);
   } catch(e) {}
+}
+
+// ── Templates ──
+async function showTemplates() {
+  const modal = document.getElementById('templatesModal');
+  const el = document.getElementById('templateList');
+  modal.classList.add('show');
+  el.innerHTML = '<div style="text-align:center;color:var(--text-dim);padding:40px">Loading…</div>';
+  try {
+    const r = await fetch('/api/templates');
+    const items = await r.json();
+    if (!items.length) {
+      el.innerHTML = '<div style="text-align:center;color:var(--text-dim);padding:40px">No templates yet. Generate a project, then click “Save as Template”.</div>';
+      return;
+    }
+    el.innerHTML = items.map(t => `
+      <div class="project-card">
+        <div class="project-card-header">
+          <span class="project-card-name">${escHtml(t.name)}</span>
+          <span>${(t.tags || []).map(tag => `<span class="tag-badge">${escHtml(tag)}</span>`).join('')}</span>
+        </div>
+        <div class="project-card-desc">${escHtml(t.description || '')}</div>
+        <div class="project-card-meta">${t.skill_count} skills · ${t.field_count} fields</div>
+        <div class="project-card-actions"><button onclick="useTemplate('${t.slug}')">✨ Use this template</button></div>
+      </div>`).join('');
+  } catch (e) {
+    el.innerHTML = '<div style="color:var(--error);padding:20px">Failed to load templates.</div>';
+  }
+}
+function closeTemplates() { document.getElementById('templatesModal').classList.remove('show'); }
+
+async function useTemplate(slug) {
+  try {
+    const tr = await fetch('/api/templates/' + slug);
+    const spec = await tr.json();
+    if (!tr.ok) { addAiMsg('Could not load template: ' + (spec.error || '')); return; }
+    const ir = await fetch('/api/projects/import', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(spec) });
+    const proj = await ir.json();
+    if (!ir.ok) { addAiMsg('Could not create from template: ' + (proj.error || '')); return; }
+    closeTemplates();
+    currentProject = proj;
+    addAiMsg(`Started from template “${proj.name}”. Fill in the form and generate, or refine the design in chat.`);
+    renderForm(proj.form_fields);
+    renderSkills(proj.skills || proj.sub_agents, proj.tools_needed);
+    switchTab('form');
+    openPreview();
+    updateActions();
+  } catch (e) { addAiMsg('Error: ' + e.message); }
+}
+
+async function saveAsTemplate() {
+  if (!currentProject) return;
+  try {
+    const r = await fetch('/api/templates', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ project_id: currentProject.id }) });
+    const data = await r.json();
+    addAiMsg(r.ok ? `📚 ${data.message}` : ('Could not save template: ' + (data.error || '')));
+  } catch (e) { addAiMsg('Error: ' + e.message); }
+}
+
+// ── Rename / Delete (active project) ──
+async function renameProject() {
+  if (!currentProject) return;
+  const name = prompt('Rename project:', currentProject.name || '');
+  if (!name || !name.trim()) return;
+  try {
+    const r = await fetch(`/api/projects/${currentProject.id}/rename`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ name: name.trim() }) });
+    const data = await r.json();
+    if (r.ok) { currentProject.name = data.name; addAiMsg('Renamed to “' + data.name + '”.'); }
+    else addAiMsg('Rename failed: ' + (data.error || ''));
+  } catch (e) { addAiMsg('Error: ' + e.message); }
+}
+
+async function deleteCurrentProject() {
+  if (!currentProject) return;
+  if (!confirm(`Delete project “${currentProject.name}”? This removes its generated files and cannot be undone.`)) return;
+  try {
+    const r = await fetch(`/api/projects/${currentProject.id}`, { method: 'DELETE' });
+    if (r.ok) { addAiMsg('Project deleted.'); newProject(); }
+    else { const d = await r.json(); addAiMsg('Delete failed: ' + (d.error || '')); }
+  } catch (e) { addAiMsg('Error: ' + e.message); }
+}
+
+// ── Version history ──
+async function showHistory() {
+  if (!currentProject) return;
+  try {
+    const r = await fetch(`/api/projects/${currentProject.id}/versions`);
+    const versions = await r.json();
+    if (!versions.length) {
+      addAiMsg('No saved versions yet. A snapshot is captured each time you refine the design or redesign the dashboard.');
+      return;
+    }
+    const el = document.getElementById('historyList');
+    el.innerHTML = versions.slice().reverse().map(v => `
+      <div class="project-card">
+        <div class="project-card-header"><span class="project-card-name">${escHtml(v.name || 'Untitled')}</span><span class="project-card-meta">${escHtml((v.ts || '').replace('T', ' ').split('.')[0])}</span></div>
+        <div class="project-card-meta">${escHtml(v.status || '')} · ${v.skill_count} skills · ${v.field_count} fields</div>
+        <div class="project-card-actions"><button onclick="restoreVersion(${v.index})">↩ Restore this version</button></div>
+      </div>`).join('');
+    document.getElementById('historyModal').classList.add('show');
+  } catch (e) { addAiMsg('Error: ' + e.message); }
+}
+function closeHistory() { document.getElementById('historyModal').classList.remove('show'); }
+
+async function restoreVersion(index) {
+  if (!currentProject) return;
+  try {
+    const r = await fetch(`/api/projects/${currentProject.id}/versions/${index}/restore`, { method: 'POST', headers: {'Content-Type':'application/json'} });
+    const data = await r.json();
+    if (!r.ok) { addAiMsg('Restore failed: ' + (data.error || '')); return; }
+    closeHistory();
+    currentProject.form_fields = data.form_fields;
+    currentProject.skills = data.skills || data.sub_agents;
+    currentProject.dashboard_metrics = data.dashboard_metrics;
+    renderForm(data.form_fields);
+    renderSkills(currentProject.skills, currentProject.tools_needed);
+    if (data.dashboard_metrics && data.dashboard_metrics.length) renderDashboard(data.dashboard_metrics);
+    switchTab('form');
+    addAiMsg(data.message || 'Restored a previous version.');
+  } catch (e) { addAiMsg('Error: ' + e.message); }
+}
+
+// ── Per-skill regeneration ──
+async function regenerateSkill(index) {
+  if (!currentProject) return;
+  showThinking('🔄 Regenerating skill…');
+  try {
+    const data = await runJob(`/api/projects/${currentProject.id}/skills/${index}/regenerate`, {}, j => updateThinking(jobProgressText(j)));
+    hideThinking();
+    addAiMsg(data.message || 'Skill regenerated.');
+  } catch (e) { hideThinking(); addAiMsg('Error: ' + e.message); }
+}
+
+// ── Project browser: rename / delete ──
+async function browserRename(pid) {
+  const name = prompt('Rename project:');
+  if (!name || !name.trim()) return;
+  try {
+    await fetch(`/api/projects/${pid}/rename`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ name: name.trim() }) });
+    await loadProjectList();
+  } catch (e) {}
+}
+async function browserDelete(pid) {
+  if (!confirm('Delete this project? This removes its generated files and cannot be undone.')) return;
+  try {
+    const r = await fetch(`/api/projects/${pid}`, { method: 'DELETE' });
+    if (r.ok) await loadProjectList();
+  } catch (e) {}
 }
 
 function newProject() {
