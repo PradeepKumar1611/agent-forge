@@ -1,0 +1,15 @@
+[tool.ruff]
+line-length = 120
+target-version = "py39"
+exclude = ["generated_projects", "template_library", "venv", ".venv"]
+
+[tool.ruff.lint]
+# Core correctness + import hygiene; pragmatic for an existing codebase.
+select = ["E", "F", "W", "I"]
+ignore = [
+    "E501",  # line length is handled loosely; long f-string prompts are intentional
+    "E741",  # ambiguous names (e.g. single-letter) are fine here
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

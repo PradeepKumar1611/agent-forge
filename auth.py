@@ -12,7 +12,6 @@ from functools import wraps
 from pathlib import Path
 
 import bcrypt
-
 from flask import jsonify, redirect, request, session, url_for
 
 BASE_DIR = Path(__file__).resolve().parent

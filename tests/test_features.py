@@ -28,7 +28,9 @@ def env(tmp_path, monkeypatch):
     server.app.config["TESTING"] = True
     client = server.app.test_client()
     with client.session_transaction() as s:
-        s["username"] = "alice"; s["role"] = "user"; s["name"] = "A"
+        s["username"] = "alice"
+        s["role"] = "user"
+        s["name"] = "A"
     return server, database, tmp_path, client
 
 

@@ -14,8 +14,9 @@ from io import BytesIO
 from pathlib import Path
 
 from dotenv import load_dotenv
-from flask import Flask, jsonify, redirect, render_template, request, send_file, session, url_for
+from flask import Flask, jsonify, redirect, render_template, request, send_file, session
 
+import jobs
 from auth import (
     add_user,
     admin_required,
@@ -28,9 +29,13 @@ from auth import (
     log_activity,
     login_required,
 )
-import jobs
-from claude_client import run_claude_code, extract_json_from_text
-from database import init_db, create_project as db_create, get_project as _db_get_raw, save_project as db_save, list_projects_for_user as _db_list_raw, delete_project as db_delete
+from claude_client import extract_json_from_text, run_claude_code
+from database import create_project as db_create
+from database import delete_project as db_delete
+from database import get_project as _db_get_raw
+from database import init_db
+from database import list_projects_for_user as _db_list_raw
+from database import save_project as db_save
 from generator import generate_project_files, regenerate_one_skill
 from security import (
     SECURITY_PROMPT_SUFFIX,

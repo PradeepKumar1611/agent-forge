@@ -485,7 +485,7 @@ open("../logs/dashboard_state.json", "w").write(json.dumps(state, indent=2))
         generated_files.append(f"skills/{folder_name}/SKILL.md")
 
     # Generate 00_dashboard.md — dashboard state management protocol
-    dashboard_protocol = f"""# Dashboard State Management — Step 0
+    dashboard_protocol = """# Dashboard State Management — Step 0
 
 ## Overview
 This file defines how ALL agents communicate with the live dashboard via `logs/dashboard_state.json`.
@@ -494,29 +494,29 @@ The dashboard polls this file every 2 seconds. Every agent MUST update it after 
 ## State Schema
 
 ```json
-{{
+{
   "overall_status": "idle|running|success|failed|warning",
   "started_at": "ISO timestamp or null",
   "finished_at": "ISO timestamp or null",
   "total_retries": 0,
-  "steps": {{
-    "1": {{ "status": "pending|running|done|failed|warning", "title": "Step Name", "subtitle": "Human-readable status", "time": "M:SS", "retries": 0 }},
+  "steps": {
+    "1": { "status": "pending|running|done|failed|warning", "title": "Step Name", "subtitle": "Human-readable status", "time": "M:SS", "retries": 0 },
     ...
-  }},
+  },
   "files_changed": [
-    {{ "path": "relative/path", "type": "new|edit|delete", "time": "HH:MM" }}
+    { "path": "relative/path", "type": "new|edit|delete", "time": "HH:MM" }
   ],
   "logs": [
-    {{ "ts": "HH:MM:SS", "step": "STEP N", "level": "INFO|WARN|ERROR|RETRY|SUCCESS", "message": "..." }}
+    { "ts": "HH:MM:SS", "step": "STEP N", "level": "INFO|WARN|ERROR|RETRY|SUCCESS", "message": "..." }
   ],
-  "human_intervention": {{
+  "human_intervention": {
     "needed": true|false,
     "title": "Short title",
     "message": "Detailed message",
     "step": 1,
     "timestamp": "ISO"
-  }}
-}}
+  }
+}
 ```
 
 ## Log Levels
@@ -559,12 +559,12 @@ def update_state(updates_fn):
 def log_step(step_num, level, message):
     \"\"\"Add a log entry.\"\"\"
     def _update(state):
-        state["logs"].append({{
+        state["logs"].append({
             "ts": datetime.now().strftime("%H:%M:%S"),
-            "step": f"STEP {{step_num}}",
+            "step": f"STEP {step_num}",
             "level": level,
             "message": message
-        }})
+        })
     update_state(_update)
 
 def set_step_status(step_num, status, subtitle=""):
