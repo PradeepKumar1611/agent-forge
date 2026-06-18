@@ -7,29 +7,29 @@
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-:root{--bg-deep:#080910;--bg-mid:#0d0f17;--bg-card:#15172a;--bg-input:#171a28;--accent:#5b8cff;--accent2:#a78bfa;--text:#dbe2f0;--text-dim:#8a93ab;--text-bright:#f4f7fc;--border:rgba(255,255,255,0.07);--border-light:rgba(255,255,255,0.12);--success:#34d399;--error:#fb7185;--panel:rgba(255,255,255,0.045);--accent-soft:rgba(91,140,255,.15)}
+:root{--bg-deep:#f5f4fc;--bg-mid:#ffffff;--bg-card:#ffffff;--bg-input:#faf9fe;--accent:#7c3aed;--accent2:#ec4899;--text:#2c2640;--text-dim:#74708a;--text-bright:#191329;--border:rgba(40,20,80,0.09);--border-light:rgba(40,20,80,0.14);--success:#10b981;--error:#ef4444;--panel:#ffffff;--accent-soft:rgba(124,58,237,.10)}
 body{background:var(--bg-deep);color:var(--text);font-family:'DM Sans',sans-serif;padding:24px;min-height:100vh;position:relative;-webkit-font-smoothing:antialiased}
-body::before{content:"";position:fixed;inset:0;z-index:0;pointer-events:none;background:radial-gradient(820px 520px at 12% -8%,rgba(91,140,255,.18),transparent 60%),radial-gradient(760px 520px at 100% 4%,rgba(167,139,250,.15),transparent 55%)}
-.container{max-width:860px;margin:0 auto;position:relative;z-index:1}
+body::before{content:"";position:fixed;inset:0;z-index:0;pointer-events:none;background:radial-gradient(680px 460px at 8% -6%,rgba(124,58,237,.16),transparent 60%),radial-gradient(620px 460px at 102% 2%,rgba(236,72,153,.15),transparent 58%)}
+.container{max-width:880px;margin:0 auto;position:relative;z-index:1}
 .header{display:flex;align-items:center;justify-content:space-between;margin-bottom:32px;padding-bottom:16px;border-bottom:1px solid var(--border)}
-.header h1{font-size:24px;font-weight:800;letter-spacing:-.02em;background:linear-gradient(120deg,#dce8ff,#c9b8ff 55%,#a78bfa);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
-.header a{color:var(--text-dim);text-decoration:none;font-size:13px;padding:8px 14px;border:1px solid var(--border-light);border-radius:10px;background:var(--panel);transition:all .18s}.header a:hover{color:var(--text-bright);border-color:rgba(91,140,255,.45);background:var(--accent-soft)}
-.card{background:rgba(21,23,42,.55);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid var(--border-light);border-radius:16px;padding:24px;margin-bottom:22px;box-shadow:0 10px 34px rgba(0,0,0,.4)}
+.header h1{font-size:24px;font-weight:800;letter-spacing:-.02em;background:linear-gradient(120deg,#7c3aed,#ec4899);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.header a{color:var(--text-dim);text-decoration:none;font-size:13px;padding:9px 16px;border:1px solid var(--border-light);border-radius:999px;background:#fff;box-shadow:0 4px 14px rgba(80,40,160,.08);transition:all .18s}.header a:hover{color:var(--accent);border-color:rgba(124,58,237,.4);background:var(--accent-soft)}
+.card{background:#fff;border:1px solid var(--border);border-radius:20px;padding:24px;margin-bottom:22px;box-shadow:0 14px 36px rgba(80,40,160,.10)}
 .card h2{font-size:16px;font-weight:700;margin-bottom:16px;color:var(--text-bright)}
 table{width:100%;border-collapse:collapse}
 th{text-align:left;font-size:11px;text-transform:uppercase;color:var(--text-dim);letter-spacing:1px;padding:9px 12px;border-bottom:1px solid var(--border)}
 td{padding:11px 12px;border-bottom:1px solid var(--border);font-size:14px}
 .role-admin{color:var(--accent);font-weight:700}.role-user{color:var(--text-dim)}
-.btn{padding:7px 15px;border-radius:9px;border:none;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .18s}
-.btn-danger{background:rgba(251,113,133,0.12);color:var(--error);border:1px solid rgba(251,113,133,0.32)}.btn-danger:hover{background:rgba(251,113,133,0.22)}
-.btn-primary{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;box-shadow:0 6px 16px rgba(91,140,255,.4)}.btn-primary:hover{transform:translateY(-1px);box-shadow:0 9px 22px rgba(91,140,255,.55)}
+.btn{padding:8px 18px;border-radius:999px;border:none;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .18s}
+.btn-danger{background:rgba(239,68,68,0.10);color:var(--error);border:1px solid rgba(239,68,68,0.30)}.btn-danger:hover{background:rgba(239,68,68,0.18)}
+.btn-primary{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;box-shadow:0 8px 20px rgba(124,58,237,.34)}.btn-primary:hover{transform:translateY(-1px);box-shadow:0 12px 26px rgba(124,58,237,.45)}
 .form-row{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap}
 .form-group{display:flex;flex-direction:column;gap:4px;flex:1;min-width:140px}
-.form-group label{font-size:12px;color:var(--text-dim)}
-.form-group input,.form-group select{padding:8px 12px;border-radius:6px;border:1px solid var(--border-light);background:var(--bg-input);color:var(--text);font-size:14px;font-family:'DM Sans',sans-serif}
-.form-group input:focus{outline:none;border-color:var(--accent)}
-.toast{position:fixed;top:20px;right:20px;padding:12px 20px;border-radius:8px;font-size:13px;font-weight:500;z-index:100;opacity:0;transition:opacity .3s}
-.toast.show{opacity:1}.toast-ok{background:#065f46;color:var(--success);border:1px solid var(--success)}.toast-err{background:#7f1d1d;color:var(--error);border:1px solid var(--error)}
+.form-group label{font-size:12px;color:var(--text-dim);font-weight:600}
+.form-group input,.form-group select{padding:10px 14px;border-radius:12px;border:1px solid var(--border-light);background:#fff;color:var(--text);font-size:14px;font-family:inherit;transition:border-color .2s,box-shadow .2s}
+.form-group input:focus,.form-group select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 4px var(--accent-soft)}
+.toast{position:fixed;top:20px;right:20px;padding:12px 20px;border-radius:14px;font-size:13px;font-weight:600;z-index:100;opacity:0;transition:opacity .3s;box-shadow:0 14px 36px rgba(80,40,160,.18)}
+.toast.show{opacity:1}.toast-ok{background:#ecfdf5;color:#047857;border:1px solid rgba(16,185,129,.4)}.toast-err{background:#fef2f2;color:#b91c1c;border:1px solid rgba(239,68,68,.4)}
 .empty{text-align:center;color:var(--text-dim);padding:20px;font-size:14px}
 </style>
 </head>
