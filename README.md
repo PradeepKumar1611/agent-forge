@@ -13,7 +13,7 @@
 ![Flask](https://img.shields.io/badge/Flask-3.x-000000?logo=flask&logoColor=white)
 ![Tests](https://img.shields.io/badge/tests-38%20passing-10b981)
 ![Powered by Claude](https://img.shields.io/badge/powered%20by-Claude-7c3aed)
-![PRs welcome](https://img.shields.io/badge/PRs-welcome-ec4899)
+[![License: MIT](https://img.shields.io/badge/license-MIT-ec4899)](LICENSE)
 
 <br>
 
@@ -239,7 +239,7 @@ Issues and PRs welcome. Run `pytest` and `ruff check .` before opening a PR — 
 
 ## 📄 License
 
-No license file yet — add one (MIT is a great default) to make reuse terms explicit.
+Released under the **[MIT License](LICENSE)** — free to use, modify, and distribute.
 
 <div align="center">
 <br>
