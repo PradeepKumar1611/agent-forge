@@ -28,6 +28,7 @@ from auth import (
     log_activity,
     login_required,
 )
+import jobs
 from claude_client import run_claude_code, extract_json_from_text
 from database import init_db, create_project as db_create, get_project as _db_get_raw, save_project as db_save, list_projects_for_user as _db_list_raw, delete_project as db_delete
 from generator import generate_project_files
@@ -498,52 +499,60 @@ Important:
 
 Respond with ONLY the JSON object."""
 
-    result = run_claude_code(prompt, project_id)
-    if result.get("error"):
-        return jsonify({"error": f"Design failed: {result.get('text', 'Claude Code error')}"}), 502
-    response_text = result.get("text", "")
+    job_id = jobs.create_job(owner=session.get("username"), kind="describe")
 
-    try:
-        parsed = json.loads(response_text)
-    except json.JSONDecodeError:
-        parsed = extract_json_from_text(response_text)
+    def _work(job_id):
+        jobs.set_progress(job_id, 15, "Designing your agent system…")
+        result = run_claude_code(prompt, project_id)
+        if result.get("error"):
+            raise RuntimeError(f"Design failed: {result.get('text', 'Claude Code error')}")
+        response_text = result.get("text", "")
 
-    if parsed:
-        if "project_name" in parsed:
-            project["name"] = parsed["project_name"]
-        if "form_fields" in parsed:
-            project["form_fields"] = parsed["form_fields"]
-        # Accept both "skills" and "sub_agents" from Claude response
-        skills = parsed.get("skills") or parsed.get("sub_agents") or []
-        # Normalize skill_file / instruction_file
-        for sk in skills:
-            if "skill_file" not in sk and "instruction_file" in sk:
-                sk["skill_file"] = sk["instruction_file"]
-            elif "instruction_file" not in sk and "skill_file" in sk:
-                sk["instruction_file"] = sk["skill_file"]
-        project["skills"] = skills
-        project["sub_agents"] = skills  # backward compat
-        if "tools_needed" in parsed:
-            project["tools_needed"] = parsed["tools_needed"]
-        if "mcp_servers" in parsed:
-            project["mcp_servers"] = parsed.get("mcp_servers", [])
-        message = parsed.get("message", "I've designed your system. Here's the input form and skills breakdown.")
-    else:
-        message = response_text or "I've designed your system based on your description."
+        try:
+            parsed = json.loads(response_text)
+        except json.JSONDecodeError:
+            parsed = extract_json_from_text(response_text)
 
-    project["status"] = "form_designed"
-    project["chat_history"].append({"role": "assistant", "content": message})
-    db_save(project)
+        if parsed:
+            if "project_name" in parsed:
+                project["name"] = parsed["project_name"]
+            if "form_fields" in parsed:
+                project["form_fields"] = parsed["form_fields"]
+            # Accept both "skills" and "sub_agents" from Claude response
+            skills = parsed.get("skills") or parsed.get("sub_agents") or []
+            # Normalize skill_file / instruction_file
+            for sk in skills:
+                if "skill_file" not in sk and "instruction_file" in sk:
+                    sk["skill_file"] = sk["instruction_file"]
+                elif "instruction_file" not in sk and "skill_file" in sk:
+                    sk["instruction_file"] = sk["skill_file"]
+            project["skills"] = skills
+            project["sub_agents"] = skills  # backward compat
+            if "tools_needed" in parsed:
+                project["tools_needed"] = parsed["tools_needed"]
+            if "mcp_servers" in parsed:
+                project["mcp_servers"] = parsed.get("mcp_servers", [])
+            message = parsed.get("message", "I've designed your system. Here's the input form and skills breakdown.")
+        else:
+            message = response_text or "I've designed your system based on your description."
 
-    return jsonify({
-        "message": message,
-        "project_name": project["name"],
-        "form_fields": project["form_fields"],
-        "skills": project["skills"],
-        "sub_agents": project["skills"],  # backward compat
-        "tools_needed": project["tools_needed"],
-        "mcp_servers": project["mcp_servers"],
-    })
+        project["status"] = "form_designed"
+        project["chat_history"].append({"role": "assistant", "content": message})
+        db_save(project)
+        jobs.set_progress(job_id, 100, f"Designed {len(project['skills'])} skills.")
+
+        return {
+            "message": message,
+            "project_name": project["name"],
+            "form_fields": project["form_fields"],
+            "skills": project["skills"],
+            "sub_agents": project["skills"],  # backward compat
+            "tools_needed": project["tools_needed"],
+            "mcp_servers": project["mcp_servers"],
+        }
+
+    jobs.run(job_id, _work)
+    return jsonify({"job_id": job_id}), 202
 
 
 # ── Chat (refine design) ──
@@ -584,42 +593,49 @@ If no structural changes needed, just respond with a JSON object with "message" 
 
 Respond with ONLY the JSON object."""
 
-    result = run_claude_code(context, project_id)
-    if result.get("error"):
-        return jsonify({"error": f"Chat failed: {result.get('text', 'Claude Code error')}"}), 502
-    response_text = result.get("text", "")
+    job_id = jobs.create_job(owner=session.get("username"), kind="chat")
 
-    try:
-        parsed = json.loads(response_text)
-    except json.JSONDecodeError:
-        parsed = extract_json_from_text(response_text)
+    def _work(job_id):
+        jobs.set_progress(job_id, 15, "Updating your design…")
+        result = run_claude_code(context, project_id)
+        if result.get("error"):
+            raise RuntimeError(f"Chat failed: {result.get('text', 'Claude Code error')}")
+        response_text = result.get("text", "")
 
-    if parsed:
-        if "form_fields" in parsed:
-            project["form_fields"] = parsed["form_fields"]
-        skills = parsed.get("skills") or parsed.get("sub_agents")
-        if skills:
-            project["skills"] = skills
-            project["sub_agents"] = skills
-        if "tools_needed" in parsed:
-            project["tools_needed"] = parsed["tools_needed"]
-        if "dashboard_metrics" in parsed:
-            project["dashboard_metrics"] = parsed["dashboard_metrics"]
-        message = parsed.get("message", response_text)
-    else:
-        message = response_text
+        try:
+            parsed = json.loads(response_text)
+        except json.JSONDecodeError:
+            parsed = extract_json_from_text(response_text)
 
-    project["chat_history"].append({"role": "assistant", "content": message})
-    db_save(project)
+        if parsed:
+            if "form_fields" in parsed:
+                project["form_fields"] = parsed["form_fields"]
+            skills = parsed.get("skills") or parsed.get("sub_agents")
+            if skills:
+                project["skills"] = skills
+                project["sub_agents"] = skills
+            if "tools_needed" in parsed:
+                project["tools_needed"] = parsed["tools_needed"]
+            if "dashboard_metrics" in parsed:
+                project["dashboard_metrics"] = parsed["dashboard_metrics"]
+            message = parsed.get("message", response_text)
+        else:
+            message = response_text
 
-    return jsonify({
-        "message": message,
-        "form_fields": project["form_fields"],
-        "skills": project["skills"],
-        "sub_agents": project["skills"],
-        "tools_needed": project["tools_needed"],
-        "dashboard_metrics": project["dashboard_metrics"],
-    })
+        project["chat_history"].append({"role": "assistant", "content": message})
+        db_save(project)
+
+        return {
+            "message": message,
+            "form_fields": project["form_fields"],
+            "skills": project["skills"],
+            "sub_agents": project["skills"],
+            "tools_needed": project["tools_needed"],
+            "dashboard_metrics": project["dashboard_metrics"],
+        }
+
+    jobs.run(job_id, _work)
+    return jsonify({"job_id": job_id}), 202
 
 
 # ── Form values ──
@@ -673,38 +689,45 @@ Respond with ONLY a JSON object with:
 Include as many meaningful metrics as the system warrants (typically 4-8, but more for complex pipelines with many skills) covering progress, errors, timing, and per-skill status. Add a status metric for each skill where it makes sense — do not artificially cap the count.
 Respond with ONLY the JSON object."""
 
-    result = run_claude_code(prompt, project_id)
-    if result.get("error"):
-        return jsonify({"error": f"Dashboard design failed: {result.get('text', 'Claude Code error')}"}), 502
-    response_text = result.get("text", "")
+    job_id = jobs.create_job(owner=session.get("username"), kind="design-dashboard")
 
-    try:
-        parsed = json.loads(response_text)
-    except json.JSONDecodeError:
-        parsed = extract_json_from_text(response_text)
+    def _work(job_id):
+        jobs.set_progress(job_id, 15, "Designing dashboard metrics…")
+        result = run_claude_code(prompt, project_id)
+        if result.get("error"):
+            raise RuntimeError(f"Dashboard design failed: {result.get('text', 'Claude Code error')}")
+        response_text = result.get("text", "")
 
-    if parsed and "dashboard_metrics" in parsed:
-        project["dashboard_metrics"] = parsed["dashboard_metrics"]
-        message = parsed.get("message", "Dashboard metrics designed.")
-    else:
-        project["dashboard_metrics"] = [
-            {"id": "overall_progress", "label": "Overall Progress", "type": "progress_bar", "description": "Total completion percentage", "agent": "all"},
-            {"id": "active_agent", "label": "Active Agent", "type": "status_badge", "description": "Currently running agent", "agent": "all"},
-            {"id": "errors", "label": "Errors", "type": "error_count", "description": "Total errors encountered", "agent": "all"},
-            {"id": "logs", "label": "Activity Log", "type": "log_stream", "description": "Live log output", "agent": "all"},
-            {"id": "elapsed", "label": "Elapsed Time", "type": "timer", "description": "Time since start", "agent": "all"},
-            {"id": "files_processed", "label": "Files Processed", "type": "counter", "description": "Number of files processed", "agent": "all"},
-        ]
-        message = response_text or "Dashboard metrics designed with default layout."
+        try:
+            parsed = json.loads(response_text)
+        except json.JSONDecodeError:
+            parsed = extract_json_from_text(response_text)
 
-    project["status"] = "dashboard_designed"
-    project["chat_history"].append({"role": "assistant", "content": message})
-    db_save(project)
+        if parsed and "dashboard_metrics" in parsed:
+            project["dashboard_metrics"] = parsed["dashboard_metrics"]
+            message = parsed.get("message", "Dashboard metrics designed.")
+        else:
+            project["dashboard_metrics"] = [
+                {"id": "overall_progress", "label": "Overall Progress", "type": "progress_bar", "description": "Total completion percentage", "agent": "all"},
+                {"id": "active_agent", "label": "Active Agent", "type": "status_badge", "description": "Currently running agent", "agent": "all"},
+                {"id": "errors", "label": "Errors", "type": "error_count", "description": "Total errors encountered", "agent": "all"},
+                {"id": "logs", "label": "Activity Log", "type": "log_stream", "description": "Live log output", "agent": "all"},
+                {"id": "elapsed", "label": "Elapsed Time", "type": "timer", "description": "Time since start", "agent": "all"},
+                {"id": "files_processed", "label": "Files Processed", "type": "counter", "description": "Number of files processed", "agent": "all"},
+            ]
+            message = response_text or "Dashboard metrics designed with default layout."
 
-    return jsonify({
-        "message": message,
-        "dashboard_metrics": project["dashboard_metrics"],
-    })
+        project["status"] = "dashboard_designed"
+        project["chat_history"].append({"role": "assistant", "content": message})
+        db_save(project)
+
+        return {
+            "message": message,
+            "dashboard_metrics": project["dashboard_metrics"],
+        }
+
+    jobs.run(job_id, _work)
+    return jsonify({"job_id": job_id}), 202
 
 
 # ── Generate project files ──
@@ -722,18 +745,45 @@ def generate_project(project_id):
         project["target_platform"] = data["target_platform"]
 
     log_activity(session.get("username"), "generate", project_id, project.get("name"))
+    job_id = jobs.create_job(owner=session.get("username"), kind="generate")
 
-    generated_files, project_dir = generate_project_files(project, project_id, PROJECTS_DIR)
+    def _work(job_id):
+        jobs.set_progress(job_id, 5, "Setting up project structure…")
+        generated_files, project_dir = generate_project_files(
+            project, project_id, PROJECTS_DIR,
+            progress_cb=lambda pct, msg: jobs.set_progress(job_id, pct, msg),
+        )
+        project["generated_files"] = generated_files
+        project["status"] = "generated"
+        project["project_dir"] = project_dir
+        db_save(project)
+        return {
+            "message": f"Project generated with {len(generated_files)} files!",
+            "files": generated_files,
+            "project_dir": project_dir,
+        }
 
-    project["generated_files"] = generated_files
-    project["status"] = "generated"
-    project["project_dir"] = project_dir
-    db_save(project)
+    jobs.run(job_id, _work)
+    return jsonify({"job_id": job_id}), 202
 
+
+# ── Async job status (polled by the frontend) ──
+
+@app.route("/api/jobs/<job_id>", methods=["GET"])
+@login_required
+def get_job_status(job_id):
+    job = jobs.get_job(job_id)
+    if not job:
+        return jsonify({"error": "Job not found"}), 404
+    owner = job.get("owner")
+    if owner and owner != session.get("username") and session.get("role") != "admin":
+        return jsonify({"error": "Not authorized"}), 403
     return jsonify({
-        "message": f"Project generated with {len(generated_files)} files!",
-        "files": generated_files,
-        "project_dir": project_dir,
+        "status": job["status"],
+        "progress": job["progress"],
+        "logs": job["logs"][-25:],
+        "result": job["result"],
+        "error": job["error"],
     })
 
 

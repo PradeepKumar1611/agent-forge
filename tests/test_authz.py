@@ -7,6 +7,8 @@ user's project (including its secrets). These tests pin that closed.
 Run with:  ./venv/bin/python -m pytest tests/ -q
 (invoked via `python -m` so the project root is importable)
 """
+import time
+
 import pytest
 
 
@@ -91,8 +93,10 @@ def test_owner_allowed(app_client):
     _login(client, "alice")
 
     assert client.get("/api/projects/p1").status_code == 200
-    # describe goes through the new helper then mocked Claude → 200
-    assert client.post("/api/projects/p1/describe", json={"description": "build a thing"}).status_code == 200
+    # describe is now async: owner is allowed → 202 with a job id (work runs in a thread)
+    r = client.post("/api/projects/p1/describe", json={"description": "build a thing"})
+    assert r.status_code == 202
+    assert "job_id" in r.get_json()
 
 
 def test_admin_allowed(app_client):
@@ -125,3 +129,30 @@ def test_missing_project_is_404(app_client):
     server, database, client = app_client
     _login(client, "alice")
     assert client.get("/api/projects/nope").status_code == 404
+
+
+def test_async_job_lifecycle(app_client):
+    """describe returns 202+job_id; polling /api/jobs/<id> reaches done with a result."""
+    server, database, client = app_client
+    _new_project(database, "p1", "alice")
+    _login(client, "alice")
+
+    job_id = client.post("/api/projects/p1/describe", json={"description": "x"}).get_json()["job_id"]
+    job = None
+    for _ in range(100):
+        job = client.get(f"/api/jobs/{job_id}").get_json()
+        if job["status"] in ("done", "error"):
+            break
+        time.sleep(0.05)
+    assert job["status"] == "done", job
+    assert job["result"] is not None
+    assert "form_fields" in job["result"]
+
+
+def test_job_not_visible_to_other_user(app_client):
+    server, database, client = app_client
+    _new_project(database, "p1", "alice")
+    _login(client, "alice")
+    job_id = client.post("/api/projects/p1/describe", json={"description": "x"}).get_json()["job_id"]
+    _login(client, "bob")
+    assert client.get(f"/api/jobs/{job_id}").status_code == 403

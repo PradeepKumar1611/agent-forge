@@ -226,7 +226,7 @@ select.form-input{cursor:pointer}
 </div>
 
 <!-- Change Password Modal -->
-<div id="pwModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:100;display:none;align-items:center;justify-content:center">
+<div id="pwModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:100;align-items:center;justify-content:center">
   <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:28px;width:360px">
     <h3 style="margin-bottom:16px;font-size:16px">Change Password</h3>
     <div style="margin-bottom:12px"><label style="font-size:12px;color:var(--text-dim);display:block;margin-bottom:4px">Current Password</label><input type="password" id="pw-old" style="width:100%;padding:8px 12px;border-radius:6px;border:1px solid var(--border-light);background:var(--bg-input);color:var(--text);font-size:14px"></div>
@@ -486,6 +486,50 @@ function hideThinking() {
   if (el) el.remove();
 }
 
+// Update the live "thinking" indicator's text (used to show real job progress).
+function updateThinking(html) {
+  const el = document.querySelector('#thinkingIndicator .thinking-text');
+  if (el) el.innerHTML = html;
+}
+
+// Build a "42% · message" string from a job's latest log line + progress.
+function jobProgressText(job) {
+  const logs = job && job.logs;
+  const last = (logs && logs.length) ? logs[logs.length - 1].message : 'Working…';
+  const pct = (job && typeof job.progress === 'number' && job.progress > 0) ? job.progress + '% · ' : '';
+  return escHtml(pct + last);
+}
+
+// Kick off an async job (POST startUrl → 202 {job_id}) and poll /api/jobs/<id>
+// until it finishes. Calls onUpdate(job) each poll. Resolves with job.result,
+// rejects with an Error on failure. Falls back gracefully if the endpoint
+// answers synchronously (e.g. the security middleware returns 200 {message}).
+async function runJob(startUrl, body, onUpdate) {
+  const startRes = await fetch(startUrl, {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify(body || {})
+  });
+  if (startRes.status !== 202) {
+    let data = {};
+    try { data = await startRes.json(); } catch (e) {}
+    if (startRes.ok) return data;
+    throw new Error(data.error || data.message || ('Request failed (' + startRes.status + ')'));
+  }
+  const { job_id } = await startRes.json();
+  while (true) {
+    await new Promise(r => setTimeout(r, 1200));
+    let job;
+    try {
+      const jr = await fetch('/api/jobs/' + job_id);
+      if (!jr.ok) throw new Error('poll failed');
+      job = await jr.json();
+    } catch (e) { continue; }  // transient blip — keep polling
+    if (onUpdate) onUpdate(job);
+    if (job.status === 'done') return job.result || {};
+    if (job.status === 'error') throw new Error(job.error || 'Operation failed');
+  }
+}
+
 // ---- Preview Panel ----
 
 function openPreview() {
@@ -647,9 +691,7 @@ async function sendMessage() {
       const proj = await pRes.json();
       currentProject = proj;
 
-      const dRes = await fetch(`/api/projects/${proj.id}/describe`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({description: text}) });
-      let data;
-      try { data = await dRes.json(); } catch(e) { data = {message: 'Server returned an invalid response. Please try again.'}; }
+      const data = await runJob(`/api/projects/${proj.id}/describe`, {description: text}, j => updateThinking(jobProgressText(j)));
       hideThinking();
 
       // If security blocked the query or no form was designed, discard the project
@@ -674,14 +716,13 @@ async function sendMessage() {
       }
     } catch (e) {
       hideThinking();
+      currentProject = null;
       addAiMsg('Error: ' + e.message);
     }
   } else {
     showThinking('Updating design...');
     try {
-      const res = await fetch(`/api/projects/${currentProject.id}/chat`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({message: text}) });
-      let data;
-      try { data = await res.json(); } catch(e) { data = {message: 'Server returned an invalid response. Please try again.'}; }
+      const data = await runJob(`/api/projects/${currentProject.id}/chat`, {message: text}, j => updateThinking(jobProgressText(j)));
       hideThinking();
 
       addAiMsg(data.message || "Updated.");
@@ -731,10 +772,8 @@ async function approveForm() {
 
   try {
     await fetch(`/api/projects/${currentProject.id}/form-values`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({values}) });
-    hideThinking();
-    showThinking('Designing dashboard metrics...');
-    const res = await fetch(`/api/projects/${currentProject.id}/design-dashboard`, { method: 'POST', headers: {'Content-Type':'application/json'} });
-    const data = await res.json();
+    updateThinking('Designing dashboard metrics…');
+    const data = await runJob(`/api/projects/${currentProject.id}/design-dashboard`, {}, j => updateThinking(jobProgressText(j)));
     hideThinking();
 
     currentProject.dashboard_metrics = data.dashboard_metrics;
@@ -759,13 +798,9 @@ function requestFormChanges() {
 }
 
 function updatePlatform(platform) {
-  if (currentProject) {
-    currentProject.target_platform = platform;
-    fetch(`/api/projects/${currentProject.id}/form-values`, {
-      method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({values: currentProject.form_values || {}})
-    });
-  }
+  // Platform is sent explicitly at generate time; just track it locally so we
+  // never overwrite saved form values with a stale/empty payload.
+  if (currentProject) currentProject.target_platform = platform;
 }
 
 function requestDashboardChanges() {
@@ -776,60 +811,17 @@ function requestDashboardChanges() {
 async function generateProject() {
   if (!currentProject) return;
   addUserMsg('Generate the project!');
-
-  // Show animated progress steps in the chat
-  const steps = [
-    { at: 0,   msg: '⚙️ Setting up project structure...' },
-    { at: 3,   msg: '📝 Creating config.json and .env files...' },
-    { at: 6,   msg: '🤖 Calling Claude to generate detailed agent instructions...' },
-    { at: 10,  msg: '🤖 Claude is writing domain-specific procedures for each agent...' },
-    { at: 30,  msg: '🤖 Still generating — writing RALPH self-healing loops and verification commands...' },
-    { at: 60,  msg: '🤖 Almost there — Claude is finalizing instruction details...' },
-    { at: 90,  msg: '📊 Building dashboard with Configure, Dashboard, and Report tabs...' },
-    { at: 105, msg: '📦 Writing CLAUDE.md, run_server.py, and support files...' },
-    { at: 120, msg: '🔧 Finalizing project — almost done...' },
-    { at: 180, msg: '⏳ Still working — complex projects take a bit longer...' },
-    { at: 240, msg: '⏳ Wrapping up — this is a deeply detailed project...' },
-  ];
-
-  const startTime = Date.now();
-  let stepIdx = 0;
-  showThinking(steps[0].msg);
-
-  const progressTimer = setInterval(() => {
-    const elapsed = (Date.now() - startTime) / 1000;
-    while (stepIdx < steps.length - 1 && elapsed >= steps[stepIdx + 1].at) stepIdx++;
-    const thinkEl = document.querySelector('.thinking');
-    if (thinkEl) {
-      const pct = Math.min(95, Math.round((elapsed / 180) * 95));
-      const mins = Math.floor(elapsed / 60);
-      const secs = Math.floor(elapsed % 60);
-      const timeStr = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
-      thinkEl.innerHTML = `<span class="dot-pulse"></span> ${steps[stepIdx].msg} <span style="color:var(--text-dim);font-size:12px;margin-left:8px">${timeStr} elapsed</span>`;
-    }
-  }, 1000);
+  showThinking('⚙️ Starting generation…');
 
   try {
     const selPlatform = document.getElementById('platformSelect')?.value || currentProject.target_platform || 'claude_code';
-    const res = await fetch(`/api/projects/${currentProject.id}/generate`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({target_platform: selPlatform}) });
-    clearInterval(progressTimer);
-
-    if (!res.ok) {
-      hideThinking();
-      let errMsg = 'Generation failed (server error). Please try again.';
-      try { const errData = await res.json(); errMsg = errData.error || errMsg; } catch(e) {}
-      addAiMsg('Error: ' + errMsg);
-      isProcessing = false; sendBtn.disabled = false;
-      return;
-    }
-
-    let data;
-    try { data = await res.json(); } catch(parseErr) {
-      hideThinking();
-      addAiMsg('Error: Server returned an invalid response. Please try generating again.');
-      isProcessing = false; sendBtn.disabled = false;
-      return;
-    }
+    // Real progress: the server runs generation as a job and reports per-skill
+    // progress, which runJob surfaces live (no more fake timers).
+    const data = await runJob(
+      `/api/projects/${currentProject.id}/generate`,
+      { target_platform: selPlatform },
+      j => updateThinking(jobProgressText(j))
+    );
     hideThinking();
 
     currentProject.generated_files = data.files;
@@ -843,7 +835,6 @@ async function generateProject() {
     currentProject = await pRes.json();
     updateActions();
   } catch (e) {
-    clearInterval(progressTimer);
     hideThinking();
     addAiMsg('Error: ' + e.message);
   }
@@ -904,7 +895,7 @@ async function importProject() {
         renderForm(proj.form_fields);
         renderSkills(proj.skills || proj.sub_agents, proj.tools_needed);
         switchTab('form');
-        previewPanel.classList.add('open');
+        openPreview();
         updateActions();
       } else {
         addAiMsg('Import failed: ' + (proj.error || ''));

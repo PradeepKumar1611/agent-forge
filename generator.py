@@ -138,12 +138,16 @@ def _generate_skill_instruction(project, sub_agents, idx, dashboard_metrics, for
     return content or None
 
 
-def _generate_all_skills(project, sub_agents, dashboard_metrics, form_values, project_id):
+def _generate_all_skills(project, sub_agents, dashboard_metrics, form_values, project_id, progress_cb=None):
     """Generate every skill's instruction file concurrently.
-    Returns a dict keyed by each skill's filename (see _skill_filename)."""
+
+    Returns a dict keyed by each skill's filename (see _skill_filename).
+    progress_cb(done, total, name) is called as each skill completes (best effort).
+    """
     if not sub_agents:
         return {}
-    workers = max(1, min(GENERATION_CONCURRENCY, len(sub_agents)))
+    total = len(sub_agents)
+    workers = max(1, min(GENERATION_CONCURRENCY, total))
 
     def _task(idx):
         content = _generate_skill_instruction(
@@ -152,15 +156,27 @@ def _generate_all_skills(project, sub_agents, dashboard_metrics, form_values, pr
         return _skill_filename(sub_agents[idx]), content
 
     generated = {}
+    done = 0
     with ThreadPoolExecutor(max_workers=workers) as executor:
-        for filename, content in executor.map(_task, range(len(sub_agents))):
+        for idx, (filename, content) in enumerate(executor.map(_task, range(total))):
+            done += 1
             if content:
                 generated[filename] = content
+            if progress_cb:
+                progress_cb(done, total, sub_agents[idx].get("name", filename))
     return generated
 
 
-def generate_project_files(project, project_id, projects_dir):
-    """Generate all project files. Returns (generated_files, project_dir)."""
+def generate_project_files(project, project_id, projects_dir, progress_cb=None):
+    """Generate all project files. Returns (generated_files, project_dir).
+
+    progress_cb(percent:int, message:str) is called at milestones (best effort)
+    so callers (e.g. the async job runner) can surface real progress.
+    """
+    def report(percent, message):
+        if progress_cb:
+            progress_cb(percent, message)
+
     safe_name = re.sub(r"[^a-z0-9_]", "_", project["name"].lower().strip()).strip("_")
     if not safe_name:
         safe_name = "agent"
@@ -280,9 +296,18 @@ def generate_project_files(project, project_id, projects_dir):
     # output budget across every skill, so quality degraded and large projects got
     # truncated as the skill count grew. Generating each file independently removes
     # that ceiling and lets every skill get full attention.
+    report(10, f"Generating {len(sub_agents)} skill instruction file(s)…")
+
+    def _skill_progress(done, total, name):
+        # Skill generation is the bulk of the work → map it to 10–80%.
+        pct = 10 + int(70 * done / total) if total else 80
+        report(pct, f"Generated skill {done}/{total}: {name}")
+
     generated_instructions = _generate_all_skills(
-        project, sub_agents, dashboard_metrics, form_values, project_id
+        project, sub_agents, dashboard_metrics, form_values, project_id,
+        progress_cb=_skill_progress,
     )
+    report(82, "Skill files generated — assembling dashboard, server, and entry files…")
 
     # Write skill files in folder/SKILL.md format with YAML frontmatter
     for idx, agent in enumerate(sub_agents):
