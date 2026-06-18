@@ -1,4 +1,4 @@
-"""Security guardrails for Agent Factory.
+"""Security guardrails for Agent Forge.
 
 Handles: query filtering, prompt injection detection, path traversal,
 input sanitization, secret masking, and request validation.

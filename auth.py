@@ -1,4 +1,4 @@
-"""Authentication, user management, and activity logging for Agent Factory.
+"""Authentication, user management, and activity logging for Agent Forge.
 
 Uses a simple JSON file for users and JSONL file for activity logs.
 No database required.

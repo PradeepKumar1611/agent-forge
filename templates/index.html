@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Agent Factory</title>
+<title>Agent Forge</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
@@ -211,7 +211,7 @@ select.form-input{cursor:pointer}
 
 <!-- Header -->
 <div class="header">
-  <div class="header-brand">&#127981; <span>Agent Factory v1.0</span></div>
+  <div class="header-brand">&#127981; <span>Agent Forge v1.0</span></div>
   <div class="header-actions">
     <button class="header-btn" onclick="newProject()">+ New Project</button>
     <button class="header-btn" onclick="importProject()">📥 Import</button>
@@ -291,22 +291,22 @@ select.form-input{cursor:pointer}
     <div class="chat-messages" id="chatArea">
       <div class="welcome" id="welcomeCard">
         <div class="welcome-title">Build <span>Multi-Agent Systems</span></div>
-        <div class="welcome-sub">Describe the agent you want to build. Agent Factory will design the form, dashboard, and generate all project files — powered by Claude Code.</div>
+        <div class="welcome-sub">Describe the agent you want to build. Agent Forge will design the form, dashboard, and generate all project files — powered by Claude Code.</div>
         <div class="tips-grid">
           <div class="tip-card" onclick="useTip('code_migration')">
             <div class="tip-icon">🔄</div>
             <div class="tip-title">Code Migration</div>
             <div class="tip-desc">Migrate a codebase between languages or frameworks with validation</div>
           </div>
-          <div class="tip-card" onclick="useTip('browser_upgrade')">
+          <div class="tip-card" onclick="useTip('website_monitor')">
             <div class="tip-icon">🌐</div>
-            <div class="tip-title">Browser Upgrade</div>
-            <div class="tip-desc">Automate browser version upgrade testing across browsers</div>
+            <div class="tip-title">Website Monitor</div>
+            <div class="tip-desc">Monitor websites for uptime and SSL expiry, then send alerts</div>
           </div>
           <div class="tip-card" onclick="useTip('test_automation')">
             <div class="tip-icon">🧪</div>
             <div class="tip-title">Test Automation</div>
-            <div class="tip-desc">Generate and run automated test suites with Playwright</div>
+            <div class="tip-desc">Generate and run automated tests for a web application</div>
           </div>
           <div class="tip-card" onclick="useTip('doc_generator')">
             <div class="tip-icon">📚</div>
@@ -436,9 +436,9 @@ let currentTab = 'form';
 
 const tipDescriptions = {
   code_migration: "I need a multi-agent system to migrate a codebase. It should clone the source repo, analyze the code structure, transform the code to the target framework, run validation tests, and generate a migration report.",
-  browser_upgrade: "I need agents to automate browser version upgrade testing. They should download new browser versions, run our test suite against each browser, compare screenshots for visual regressions, and compile a compatibility report.",
-  test_automation: "I need a test automation system that analyzes our web application, generates Playwright test scripts for critical user flows, runs them across browsers, and produces coverage and failure reports.",
-  doc_generator: "I need agents to auto-generate documentation from our codebase. They should parse source files, extract API signatures and comments, generate formatted docs with examples, and publish them to a static site."
+  website_monitor: "I need a multi-agent system that monitors a list of websites for uptime and SSL certificate expiry, measures response times, and emails a summary report when a site is down or a certificate is expiring soon.",
+  test_automation: "I need a test automation system that analyzes a web application, generates test scripts for critical user flows, runs them across browsers, and produces coverage and failure reports.",
+  doc_generator: "I need agents to auto-generate documentation from a codebase. They should parse source files, extract API signatures and comments, generate formatted docs with examples, and publish them to a static site."
 };
 
 function autoResize(el) {
@@ -485,7 +485,7 @@ function addUserMsg(text) {
 function addAiMsg(text) {
   const div = document.createElement('div');
   div.className = 'msg msg-ai';
-  div.innerHTML = `<div class="msg-avatar">🏭</div><div class="msg-body"><div class="msg-sender">Agent Factory</div><div class="msg-bubble">${formatMsg(text)}</div></div>`;
+  div.innerHTML = `<div class="msg-avatar">🏭</div><div class="msg-body"><div class="msg-sender">Agent Forge</div><div class="msg-bubble">${formatMsg(text)}</div></div>`;
   chatArea.appendChild(div);
   scrollToBottom();
   return div;
@@ -1225,11 +1225,11 @@ function newProject() {
   chatArea.innerHTML = `
   <div class="welcome" id="welcomeCard">
     <div class="welcome-title">Build <span>Multi-Agent Systems</span></div>
-    <div class="welcome-sub">Describe the agent you want to build. Agent Factory will design the form, dashboard, and generate all project files — powered by Claude Code.</div>
+    <div class="welcome-sub">Describe the agent you want to build. Agent Forge will design the form, dashboard, and generate all project files — powered by Claude Code.</div>
     <div class="tips-grid">
       <div class="tip-card" onclick="useTip('code_migration')"><div class="tip-icon">🔄</div><div class="tip-title">Code Migration</div><div class="tip-desc">Migrate a codebase between languages or frameworks</div></div>
-      <div class="tip-card" onclick="useTip('browser_upgrade')"><div class="tip-icon">🌐</div><div class="tip-title">Browser Upgrade</div><div class="tip-desc">Automate browser version upgrade testing</div></div>
-      <div class="tip-card" onclick="useTip('test_automation')"><div class="tip-icon">🧪</div><div class="tip-title">Test Automation</div><div class="tip-desc">Generate and run automated test suites</div></div>
+      <div class="tip-card" onclick="useTip('website_monitor')"><div class="tip-icon">🌐</div><div class="tip-title">Website Monitor</div><div class="tip-desc">Monitor websites for uptime and SSL expiry</div></div>
+      <div class="tip-card" onclick="useTip('test_automation')"><div class="tip-icon">🧪</div><div class="tip-title">Test Automation</div><div class="tip-desc">Generate and run automated tests for a web app</div></div>
       <div class="tip-card" onclick="useTip('doc_generator')"><div class="tip-icon">📚</div><div class="tip-title">Doc Generator</div><div class="tip-desc">Auto-generate docs from source code</div></div>
     </div>
     <div class="steps-bar">

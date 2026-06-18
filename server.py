@@ -1,4 +1,4 @@
-"""Agent Factory — Main Flask application.
+"""Agent Forge — Main Flask application.
 
 Routes for project CRUD, design (describe/chat), generation, and download.
 Security, Claude CLI, and file generation logic live in separate modules.
@@ -1041,5 +1041,5 @@ if __name__ == "__main__":
     port = int(os.environ.get("PORT", "5000"))
     # Debug (and the interactive Werkzeug debugger) is OFF unless explicitly opted in.
     debug_mode = os.environ.get("FLASK_DEBUG", "").lower() == "true"
-    print(f"Agent Factory running at http://localhost:{port}")
+    print(f"Agent Forge running at http://localhost:{port}")
     app.run(host="0.0.0.0", port=port, debug=debug_mode, threaded=True)

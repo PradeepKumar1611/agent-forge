@@ -1,4 +1,4 @@
-# Agent Factory — Setup & Migration Guide
+# Agent Forge — Setup & Migration Guide
 
 ## Prerequisites
 
@@ -27,7 +27,7 @@ Before you begin, make sure the new machine has:
 Copy these **14 files** to the new machine (keeping folder structure):
 
 ```
-agent-factory/
+agent-forge/
 ├── server.py              # Main Flask app
 ├── auth.py                # Login, users, activity logging
 ├── security.py            # Guardrails and input validation
@@ -61,7 +61,7 @@ agent-factory/
 
 ```bash
 # 1. Navigate to the project
-cd agent-factory
+cd agent-forge
 
 # 2. Create a virtual environment
 python3 -m venv venv
@@ -160,8 +160,8 @@ To copy everything in one shot from the current machine:
 
 ```bash
 # From the current machine — creates a clean tar
-cd /home/pradeep-3562/Documents/Claude_Code
-tar czf agent-factory-portable.tar.gz \
+cd ~/projects   # the directory that contains agent-forge
+tar czf agent-forge-portable.tar.gz \
   --exclude='generated_projects' \
   --exclude='__pycache__' \
   --exclude='venv' \
@@ -173,15 +173,15 @@ tar czf agent-factory-portable.tar.gz \
   --exclude='.env' \
   --exclude='logs' \
   --exclude='*.pyc' \
-  agent-factory/
+  agent-forge/
 
 # Copy to new machine
-scp agent-factory-portable.tar.gz user@new-machine:~/
+scp agent-forge-portable.tar.gz user@new-machine:~/
 
 # On the new machine
 cd ~
-tar xzf agent-factory-portable.tar.gz
-cd agent-factory
+tar xzf agent-forge-portable.tar.gz
+cd agent-forge
 python3 -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env

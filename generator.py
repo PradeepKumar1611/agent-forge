@@ -1,4 +1,4 @@
-"""Project file generator for Agent Factory.
+"""Project file generator for Agent Forge.
 
 Generates all project files: CLAUDE.md, config.json, instruction files,
 dashboard HTML with configure form, run_server.py, and supporting files.

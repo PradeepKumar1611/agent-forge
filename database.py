@@ -1,4 +1,4 @@
-"""SQLite-backed project store for Agent Factory.
+"""SQLite-backed project store for Agent Forge.
 
 Stores all project data in a single SQLite database file.
 Each project is stored as a JSON blob — simple, no ORM, no migrations.

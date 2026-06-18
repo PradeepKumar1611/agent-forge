@@ -1,6 +1,6 @@
 """In-process async job registry for long-running operations.
 
-Agent Factory runs as a single threaded Flask process, so jobs are tracked in a
+Agent Forge runs as a single threaded Flask process, so jobs are tracked in a
 module-level dict guarded by a lock and executed in daemon worker threads. Each
 job exposes status / progress / a rolling log buffer / result / error, which the
 frontend polls via GET /api/jobs/<id>. This replaces the old pattern of blocking

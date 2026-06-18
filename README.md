@@ -1,4 +1,4 @@
-# Agent Factory
+# Agent Forge
 
 A web application that designs and generates production-ready multi-agent systems powered by Claude Code. Describe what you want, fill in a form, and get a complete project with CLAUDE.md, instruction files, a live dashboard, and a launch command.
 
@@ -18,7 +18,7 @@ A web application that designs and generates production-ready multi-agent system
 
 ```bash
 # 1. Clone or copy the project
-cd agent-factory
+cd agent-forge
 
 # 2. Create virtual environment
 python3 -m venv venv
@@ -50,7 +50,7 @@ Change the password immediately after first login via **Change Password** in the
 ## Project Structure
 
 ```
-agent-factory/
+agent-forge/
 ├── server.py              # Flask app — routes and orchestration
 ├── auth.py                # Login, user management, activity logging
 ├── security.py            # Guardrails, input validation, prompt hardening
@@ -126,7 +126,7 @@ claude --dangerously-skip-permissions "Read CLAUDE.md and understand the project
 
 ## Files to Back Up
 
-When moving to a new machine, copy the entire `agent-factory/` directory. The key files are:
+When moving to a new machine, copy the entire `agent-forge/` directory. The key files are:
 
 | File | Purpose | Recreatable? |
 |------|---------|-------------|
