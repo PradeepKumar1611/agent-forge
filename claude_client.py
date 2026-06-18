@@ -7,15 +7,22 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent
 
 
-def run_claude_code(prompt, project_id=None):
-    """Call Claude Code CLI and return parsed response."""
+def run_claude_code(prompt, project_id=None, model=None, timeout=300):
+    """Call Claude Code CLI and return parsed response.
+
+    model:   optional model id (e.g. "claude-opus-4-8") passed via --model.
+             Defaults to the CLI's configured model when None.
+    timeout: per-call subprocess timeout in seconds.
+    """
     try:
         cmd = ["claude", "-p", prompt, "--output-format", "json"]
+        if model:
+            cmd += ["--model", model]
         result = subprocess.run(
             cmd,
             capture_output=True,
             text=True,
-            timeout=300,
+            timeout=timeout,
             cwd=str(BASE_DIR),
         )
         stdout = result.stdout.strip()
@@ -40,7 +47,7 @@ def run_claude_code(prompt, project_id=None):
         except json.JSONDecodeError:
             return {"text": stdout, "error": False}
     except subprocess.TimeoutExpired:
-        return {"text": "Claude Code timed out after 300 seconds.", "error": True}
+        return {"text": f"Claude Code timed out after {timeout} seconds.", "error": True}
     except FileNotFoundError:
         return {"text": "Claude Code CLI not found. Make sure 'claude' is installed and in PATH.", "error": True}
     except Exception as e:

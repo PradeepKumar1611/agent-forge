@@ -491,7 +491,7 @@ Important:
   - report_format: type=select, options=["HTML","PDF","Markdown","JSON"], label="Report Format", description="Format for the final output report", required=true, default="HTML"
   - report_output_dir: type=text, label="Report Output Directory", placeholder="./reports", description="Directory where the final report will be saved"
   The LAST skill must generate the report in the chosen format and save it to report_output_dir. For HTML reports, also save as "report.html" in the project root so the dashboard can display it.
-- Design 2-5 skills that break down the work into reusable, independent units
+- Decompose the work into as many independent skills as it genuinely requires — do NOT pad or truncate to hit a fixed number. Simple jobs may need just 2-3 skills; complex, multi-stage pipelines may need 8 or more. Let the scope decide. Each skill should be one cohesive, reusable unit of work (single responsibility).
 - Each skill should be platform-agnostic (works with Claude Code, Cursor, Codex, or any AI tool)
 - Be specific about tools (git, docker, playwright, npm, etc.)
 {SECURITY_PROMPT_SUFFIX}
@@ -670,7 +670,7 @@ Respond with ONLY a JSON object with:
 - "message": Explanation of the dashboard design
 - "dashboard_metrics": Array of metrics. Each has: id (string), label (string), type (progress_bar|counter|log_stream|status_badge|percentage|timer|error_count|file_list), description (string), agent (string - which sub-agent updates this)
 
-Include 4-8 meaningful metrics that cover progress, errors, timing, and per-agent status.
+Include as many meaningful metrics as the system warrants (typically 4-8, but more for complex pipelines with many skills) covering progress, errors, timing, and per-skill status. Add a status metric for each skill where it makes sense — do not artificially cap the count.
 Respond with ONLY the JSON object."""
 
     result = run_claude_code(prompt, project_id)

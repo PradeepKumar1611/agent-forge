@@ -4,16 +4,159 @@ Generates all project files: CLAUDE.md, config.json, instruction files,
 dashboard HTML with configure form, run_server.py, and supporting files.
 """
 import json
+import os
 import re
 import stat
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from claude_client import run_claude_code, extract_json_from_text
+from claude_client import run_claude_code
+
+# Optional override for the model used to generate instruction files.
+# Leave unset to use the Claude CLI's configured default (safe everywhere).
+GENERATION_MODEL = os.environ.get("AGENT_FACTORY_GEN_MODEL") or None
+# How many skill files to generate concurrently (each is a separate Claude call).
+GENERATION_CONCURRENCY = int(os.environ.get("AGENT_FACTORY_GEN_CONCURRENCY", "4"))
+
+# Sections every generated SKILL.md must contain to pass the quality gate.
+_REQUIRED_SECTIONS = ("pre-condition", "procedure", "ralph", "dashboard", "handoff")
+_MIN_SKILL_LINES = 80
 
 
 def _skill_folder_name(name):
     """Convert a skill name to a clean folder name (no numbered prefix)."""
     return re.sub(r"[^a-z0-9_]", "_", name.lower().strip()).strip("_") or "skill"
+
+
+def _strip_code_fences(text):
+    """Remove a leading/trailing ```markdown ... ``` fence if a model added one."""
+    if not text:
+        return ""
+    t = text.strip()
+    if t.startswith("```"):
+        first_nl = t.find("\n")
+        if first_nl != -1:
+            t = t[first_nl + 1:]
+        if t.rstrip().endswith("```"):
+            t = t.rstrip()[:-3]
+    return t.strip()
+
+
+def _meets_quality_bar(content):
+    """A generated instruction file is acceptable if it is long enough and
+    covers most of the required sections."""
+    if not content or len(content.splitlines()) < _MIN_SKILL_LINES:
+        return False
+    low = content.lower()
+    hits = sum(1 for marker in _REQUIRED_SECTIONS if marker in low)
+    return hits >= 4
+
+
+def _skill_filename(agent):
+    """The filename key Claude is asked to produce for a skill (kept stable so the
+    write loop can look it up)."""
+    return (
+        agent.get("skill_file")
+        or agent.get("instruction_file")
+        or f"{agent.get('name', 'agent').lower().replace(' ', '_')}.md"
+    )
+
+
+def _build_skill_prompt(project, sub_agents, idx, dashboard_metrics, form_values):
+    """Build a focused prompt that generates ONE skill's instruction file."""
+    total = len(sub_agents)
+    agent = sub_agents[idx]
+    name = agent.get("name", "Agent")
+    roster = "\n".join(
+        f"  {i+1}. {a.get('name', 'Skill')} — {a.get('description', '')[:120]}"
+        for i, a in enumerate(sub_agents)
+    )
+    next_name = sub_agents[idx + 1].get("name") if idx < total - 1 else None
+    handoff = (
+        f"Hand off to the next skill, **{next_name}**, describing exactly what you produced for it."
+        if next_name
+        else "This is the **final** skill — write the completion summary and final metrics to the dashboard state."
+    )
+    return f"""You are writing ONE instruction file (a SKILL.md) for skill {idx + 1} of {total} in a multi-skill agent system called "{project['name']}".
+
+Project description: {project.get('description', '')}
+
+Full skill roster (execution order) — for context and handoffs only:
+{roster}
+
+THE SKILL YOU MUST WRITE (#{idx + 1}):
+  name: {name}
+  description: {agent.get('description', '')}
+  inputs: {json.dumps(agent.get('inputs', []))}
+  outputs: {json.dumps(agent.get('outputs', []))}
+
+Dashboard metrics this system tracks:
+{json.dumps(dashboard_metrics, indent=2)}
+
+Form fields (user configuration, read from ../config.json at runtime):
+{json.dumps(project.get('form_fields', []), indent=2)}
+
+Config values currently provided:
+{json.dumps(form_values, indent=2)}
+
+Write a deeply detailed, domain-specific instruction file for THIS skill only. It MUST include ALL of these sections:
+
+1. **Title and Description** — what this skill does, in 3-5 sentences.
+2. **Pre-conditions** — what must be true before it runs (prior skill outputs, files, credentials).
+3. **Read Configuration** — MUST read ../config.json at runtime for ALL inputs; never hardcode generation-time values; always reload fresh.
+4. **Detailed Procedure** — step-by-step with ACTUAL bash/python commands (not pseudocode). All paths/URLs/options come from config.json. Include verification commands after each major step.
+5. **RALPH Self-Healing Loop** — 5 SPECIFIC, DIFFERENT retry strategies tailored to THIS skill's failure modes (retry → alternative method → reduce scope → fix prerequisites → escalate to human via logs/dashboard_state.json).
+6. **Dashboard State Updates** — exact JSON keys to update with python code, updating both this skill's step status (step {idx + 1}) AND the relevant flat metrics.
+7. **Handoff** — {handoff}
+8. **Known Pitfalls** — failure scenarios specific to this domain.
+
+The file MUST be at least {_MIN_SKILL_LINES} lines of substantive, actionable content — NOT a generic template.
+Respond with ONLY the raw markdown content of the file. Do NOT wrap it in JSON or code fences."""
+
+
+def _generate_skill_instruction(project, sub_agents, idx, dashboard_metrics, form_values, project_id, model):
+    """Generate one skill's markdown via Claude, with a single quality-gated retry.
+    Returns the markdown string, or None if generation failed entirely."""
+    prompt = _build_skill_prompt(project, sub_agents, idx, dashboard_metrics, form_values)
+    result = run_claude_code(prompt, project_id, model=model)
+    if result.get("error"):
+        return None
+    content = _strip_code_fences(result.get("text", ""))
+
+    if not _meets_quality_bar(content):
+        retry_prompt = prompt + (
+            "\n\nThe previous attempt was too short or omitted required sections. "
+            f"Produce a COMPLETE file with ALL 8 sections and at least {_MIN_SKILL_LINES} substantive lines."
+        )
+        retry = run_claude_code(retry_prompt, project_id, model=model)
+        if not retry.get("error"):
+            retry_content = _strip_code_fences(retry.get("text", ""))
+            # Keep whichever attempt is more complete.
+            if len(retry_content) > len(content or ""):
+                content = retry_content
+
+    return content or None
+
+
+def _generate_all_skills(project, sub_agents, dashboard_metrics, form_values, project_id):
+    """Generate every skill's instruction file concurrently.
+    Returns a dict keyed by each skill's filename (see _skill_filename)."""
+    if not sub_agents:
+        return {}
+    workers = max(1, min(GENERATION_CONCURRENCY, len(sub_agents)))
+
+    def _task(idx):
+        content = _generate_skill_instruction(
+            project, sub_agents, idx, dashboard_metrics, form_values, project_id, GENERATION_MODEL
+        )
+        return _skill_filename(sub_agents[idx]), content
+
+    generated = {}
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        for filename, content in executor.map(_task, range(len(sub_agents))):
+            if content:
+                generated[filename] = content
+    return generated
 
 
 def generate_project_files(project, project_id, projects_dir):
@@ -131,66 +274,15 @@ def generate_project_files(project, project_id, projects_dir):
     (project_dir / ".env.example").write_text("\n".join(env_example_lines) + "\n")
     generated_files.append(".env.example")
 
-    # ── Call Claude Code to generate DETAILED instruction files ──
-    # This is the key difference: instead of templates, Claude generates
-    # domain-specific, deeply engineered instructions for each agent.
-    agents_context = json.dumps(sub_agents, indent=2)
-    metrics_context = json.dumps(dashboard_metrics, indent=2)
-    fields_context = json.dumps(project.get("form_fields", []), indent=2)
-
-    instructions_prompt = f"""You are generating detailed instruction files for a multi-agent system called "{project['name']}".
-
-Project description: {project.get('description', '')}
-
-Sub-agents (in execution order):
-{agents_context}
-
-Dashboard metrics:
-{metrics_context}
-
-Form fields (user configuration):
-{fields_context}
-
-Config values provided by user:
-{json.dumps(form_values, indent=2)}
-
-For EACH agent, generate a deeply detailed instruction file. Each file MUST include ALL of these sections:
-
-1. **Title and Description** — What this agent does in 3-5 sentences
-2. **Pre-conditions** — What must be true before this agent runs (previous agent output, files that must exist, etc.)
-3. **Read Configuration** — MUST read ../config.json at runtime for ALL input values. The user can change config via the dashboard UI at any time. NEVER hardcode values from the generation-time defaults. Always load config.json fresh.
-4. **Detailed Procedure** — Step-by-step with ACTUAL bash/python commands, not pseudocode. All file paths, URLs, and options MUST come from config.json — never hardcoded. Include:
-   - File paths to read/write (from config.json values)
-   - Commands to run (grep, curl, python, etc.)
-   - Expected output format
-   - Verification commands after each major step
-5. **RALPH Self-Healing Loop** — 5 SPECIFIC retry strategies tailored to THIS agent's failure modes. Each attempt must be a DIFFERENT approach. Examples:
-   - Attempt 1: Retry same command (transient error)
-   - Attempt 2: Try alternative tool/method
-   - Attempt 3: Reduce scope (skip non-critical items)
-   - Attempt 4: Check prerequisites and fix them
-   - Attempt 5: Log detailed error and escalate to human via dashboard_state.json
-6. **Dashboard State Updates** — Exact JSON keys to update, with python code showing HOW to update both the step status AND the flat metrics. Include the step number for this agent.
-7. **Handoff** — What to pass to the next agent (or final summary if last agent)
-8. **Known Pitfalls** — Common failure scenarios specific to this domain
-
-Respond with ONLY a JSON object where keys are instruction filenames and values are the full markdown content. Example:
-{{"01_agent_name.md": "# Agent Name\\n\\n## Description\\n...(100+ lines)...", "02_next_agent.md": "..."}}
-
-Each instruction file MUST be at least 80 lines of detailed, actionable content. NOT generic templates.
-Respond with ONLY the JSON object."""
-
-    instructions_result = run_claude_code(instructions_prompt, project_id)
-    instructions_text = instructions_result.get("text", "")
-
-    # Parse the generated instructions
-    generated_instructions = {}
-    try:
-        generated_instructions = json.loads(instructions_text)
-    except json.JSONDecodeError:
-        parsed = extract_json_from_text(instructions_text)
-        if parsed:
-            generated_instructions = parsed
+    # ── Generate DETAILED instruction files — one focused Claude call per skill ──
+    # Per-skill generation (run concurrently, each with a quality-gated retry)
+    # replaces the old single all-skills-at-once call. That single call shared one
+    # output budget across every skill, so quality degraded and large projects got
+    # truncated as the skill count grew. Generating each file independently removes
+    # that ceiling and lets every skill get full attention.
+    generated_instructions = _generate_all_skills(
+        project, sub_agents, dashboard_metrics, form_values, project_id
+    )
 
     # Write skill files in folder/SKILL.md format with YAML frontmatter
     for idx, agent in enumerate(sub_agents):
