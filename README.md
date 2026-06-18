@@ -75,7 +75,7 @@ agent-forge/
 
 1. **Describe** — Tell it what agent you want ("Build a website translator")
 2. **Form** — A custom input form is generated (URLs, paths, credentials, report format)
-3. **Dashboard** — Monitoring metrics are designed for the pipeline
+3. **Dashboard** — Progress metrics are designed for the pipeline
 4. **Generate** — Complete project with CLAUDE.md, instruction files, dashboard, and launch command
 5. **Download** — Get a ZIP of the entire project
 

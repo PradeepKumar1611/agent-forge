@@ -580,7 +580,7 @@ def set_step_status(step_num, status, subtitle=""):
     dash_skill_dir.mkdir(parents=True, exist_ok=True)
     dash_frontmatter = """---
 name: 00_dashboard
-description: Dashboard state management protocol. Read this FIRST before executing any other skill. Defines how to update logs/dashboard_state.json for real-time monitoring.
+description: Dashboard state management protocol. Read this FIRST before executing any other skill. Defines how to update logs/dashboard_state.json for real-time progress tracking.
 ---
 
 """
@@ -711,7 +711,7 @@ claude --dangerously-skip-permissions "Read CLAUDE.md and understand the project
 - `.env` / `.env.example` — Secrets (never commit .env)
 - `skills/00_dashboard/SKILL.md` — Dashboard state protocol
 - `skills/<skill_name>/SKILL.md` — Per-skill files (each in its own folder with YAML frontmatter)
-- `dashboard.html` — Live monitoring dashboard
+- `dashboard.html` — Live progress dashboard
 - `run_server.py` — Dashboard HTTP server (port 8080)
 - `logs/dashboard_state.json` — Live state file (polled every 2s)
 - `logs/audit.log` — Full timestamped audit trail
@@ -785,13 +785,13 @@ If a step fails, retry up to 5 times with different strategies before escalating
 
 {chr(10).join(f'   {idx+1}. `skills/{_skill_folder_name(a.get("name", "skill"))}/SKILL.md` — {a.get("name", "")}' for idx, a in enumerate(sub_agents))}
 
-4. Monitor progress in `logs/dashboard_state.json`
+4. Track progress in `logs/dashboard_state.json`
 
 ## Configuration
 All inputs are in `config.json`. Secrets are in `.env`.
 
 ## Dashboard
-Run `python3 run_server.py` and open http://localhost:8080 to monitor progress.
+Run `python3 run_server.py` and open http://localhost:8080 to track progress.
 
 ## Skills Reference
 Each skill file in the `skills/` directory is a standalone unit of work.
@@ -1059,7 +1059,7 @@ select.form-input{{cursor:pointer}}
         1. Copy the command above<br>
         2. Open a terminal in the project directory<br>
         3. Paste and run — the agent will execute autonomously<br>
-        4. Switch to the <strong>Dashboard</strong> tab to monitor progress in real-time
+        4. Switch to the <strong>Dashboard</strong> tab to track progress in real-time
       </div>
     </div>
   </div>

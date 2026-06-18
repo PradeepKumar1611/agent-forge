@@ -24,7 +24,7 @@ def test_injection_queries_blocked():
 
 
 def test_legitimate_queries_allowed():
-    ok, msg = security.check_query_safety("Build an agent that monitors website uptime and emails alerts")
+    ok, msg = security.check_query_safety("Build an agent that migrates a codebase to another framework and runs the tests")
     assert ok and msg == ""
 
 

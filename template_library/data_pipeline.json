@@ -1,0 +1,25 @@
+{
+  "name": "Data Pipeline",
+  "description": "Pulls records from a REST API, cleans and transforms them, validates the result, loads it into a destination file or database, and produces a summary report.",
+  "tags": ["data", "etl", "pipeline", "starter"],
+  "target_platform": "claude_code",
+  "form_fields": [
+    {"id": "api_url", "label": "Source API URL", "type": "url", "placeholder": "https://api.example.com/records", "required": true, "is_secret": false, "description": "REST endpoint to pull records from", "group": "Source"},
+    {"id": "api_key", "label": "API Key", "type": "password", "placeholder": "", "required": false, "is_secret": true, "description": "Bearer token / API key, if the source requires auth", "group": "Source"},
+    {"id": "page_param", "label": "Pagination Param", "type": "text", "placeholder": "page", "required": false, "is_secret": false, "description": "Query param used to page through results (leave blank if none)", "group": "Source"},
+    {"id": "transform_rules", "label": "Transform Rules", "type": "textarea", "placeholder": "rename created->created_at; drop nulls; lowercase emails", "required": false, "is_secret": false, "description": "Plain-language description of the cleaning/transform rules", "group": "Transform"},
+    {"id": "destination", "label": "Destination", "type": "select", "options": ["CSV file", "JSON file", "SQLite database"], "required": true, "is_secret": false, "description": "Where the transformed data should be loaded", "group": "Destination", "default": "CSV file"},
+    {"id": "destination_path", "label": "Destination Path", "type": "text", "placeholder": "./output/records.csv", "required": true, "is_secret": false, "description": "File path (or DB path) for the loaded data", "group": "Destination"},
+    {"id": "report_format", "label": "Report Format", "type": "select", "options": ["HTML", "PDF", "Markdown", "JSON"], "required": true, "is_secret": false, "description": "Format for the final summary report", "group": "Report Output", "default": "HTML"},
+    {"id": "report_output_dir", "label": "Report Output Directory", "type": "text", "placeholder": "./reports", "required": false, "is_secret": false, "description": "Directory where the final report will be saved", "group": "Report Output"}
+  ],
+  "skills": [
+    {"name": "Fetch Source Data", "description": "Pull all records from the source API, handling pagination and auth.", "skill_file": "01_fetch_source_data.md", "inputs": ["api_url", "api_key", "page_param"], "outputs": ["raw records"]},
+    {"name": "Clean And Transform", "description": "Apply the transform rules to normalize, rename, and drop fields from the raw records.", "skill_file": "02_clean_and_transform.md", "inputs": ["raw records", "transform_rules"], "outputs": ["transformed records"]},
+    {"name": "Validate Records", "description": "Check the transformed records for required fields, types, and duplicates; quarantine bad rows.", "skill_file": "03_validate_records.md", "inputs": ["transformed records"], "outputs": ["valid records", "rejected records"]},
+    {"name": "Load To Destination", "description": "Write the valid records to the chosen destination (CSV/JSON file or SQLite DB).", "skill_file": "04_load_to_destination.md", "inputs": ["valid records", "destination", "destination_path"], "outputs": ["load result"]},
+    {"name": "Generate Pipeline Report", "description": "Summarize counts, rejects, and timing into a report in the chosen format and save it.", "skill_file": "05_generate_pipeline_report.md", "inputs": ["load result", "rejected records", "report_format", "report_output_dir"], "outputs": ["report file"]}
+  ],
+  "tools_needed": ["python3", "curl", "jq"],
+  "mcp_servers": []
+}

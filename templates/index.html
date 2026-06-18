@@ -298,10 +298,10 @@ select.form-input{cursor:pointer}
             <div class="tip-title">Code Migration</div>
             <div class="tip-desc">Migrate a codebase between languages or frameworks with validation</div>
           </div>
-          <div class="tip-card" onclick="useTip('website_monitor')">
-            <div class="tip-icon">🌐</div>
-            <div class="tip-title">Website Monitor</div>
-            <div class="tip-desc">Monitor websites for uptime and SSL expiry, then send alerts</div>
+          <div class="tip-card" onclick="useTip('data_pipeline')">
+            <div class="tip-icon">📊</div>
+            <div class="tip-title">Data Pipeline</div>
+            <div class="tip-desc">Pull data from an API, transform it, and produce a report</div>
           </div>
           <div class="tip-card" onclick="useTip('test_automation')">
             <div class="tip-icon">🧪</div>
@@ -436,7 +436,7 @@ let currentTab = 'form';
 
 const tipDescriptions = {
   code_migration: "I need a multi-agent system to migrate a codebase. It should clone the source repo, analyze the code structure, transform the code to the target framework, run validation tests, and generate a migration report.",
-  website_monitor: "I need a multi-agent system that monitors a list of websites for uptime and SSL certificate expiry, measures response times, and emails a summary report when a site is down or a certificate is expiring soon.",
+  data_pipeline: "I need a multi-agent system that pulls data from a REST API, cleans and transforms the records, validates them, loads them into a destination file or database, and produces a summary report.",
   test_automation: "I need a test automation system that analyzes a web application, generates test scripts for critical user flows, runs them across browsers, and produces coverage and failure reports.",
   doc_generator: "I need agents to auto-generate documentation from a codebase. They should parse source files, extract API signatures and comments, generate formatted docs with examples, and publish them to a static site."
 };
@@ -1228,7 +1228,7 @@ function newProject() {
     <div class="welcome-sub">Describe the agent you want to build. Agent Forge will design the form, dashboard, and generate all project files — powered by Claude Code.</div>
     <div class="tips-grid">
       <div class="tip-card" onclick="useTip('code_migration')"><div class="tip-icon">🔄</div><div class="tip-title">Code Migration</div><div class="tip-desc">Migrate a codebase between languages or frameworks</div></div>
-      <div class="tip-card" onclick="useTip('website_monitor')"><div class="tip-icon">🌐</div><div class="tip-title">Website Monitor</div><div class="tip-desc">Monitor websites for uptime and SSL expiry</div></div>
+      <div class="tip-card" onclick="useTip('data_pipeline')"><div class="tip-icon">📊</div><div class="tip-title">Data Pipeline</div><div class="tip-desc">Pull data from an API, transform it, and produce a report</div></div>
       <div class="tip-card" onclick="useTip('test_automation')"><div class="tip-icon">🧪</div><div class="tip-title">Test Automation</div><div class="tip-desc">Generate and run automated tests for a web app</div></div>
       <div class="tip-card" onclick="useTip('doc_generator')"><div class="tip-icon">📚</div><div class="tip-title">Doc Generator</div><div class="tip-desc">Auto-generate docs from source code</div></div>
     </div>
