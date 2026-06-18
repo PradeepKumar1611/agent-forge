@@ -815,7 +815,26 @@ They are platform-agnostic and work with any AI tool that can read Markdown.
     (project_dir / "requirements.txt").write_text(req_content)
     generated_files.append("requirements.txt")
 
-    # Generate setup_instructions.txt
+    # Generate setup_instructions.txt — platform-aware run command + entry file
+    _entry_files = {"claude_code": "CLAUDE.md", "cursor": ".cursorrules", "codex": "AGENTS.md", "generic": "INSTRUCTIONS.md"}
+    _entry_file = _entry_files.get(target_platform, "CLAUDE.md")
+    if target_platform == "cursor":
+        _run_step = "Open this project folder in Cursor — it reads .cursorrules and executes the skills in order."
+    elif target_platform == "codex":
+        _run_step = 'codex exec --sandbox workspace-write --skip-git-repo-check "Read AGENTS.md and execute all skills in order"'
+    elif target_platform == "generic":
+        _run_step = "Open INSTRUCTIONS.md in your AI tool and ask it to read INSTRUCTIONS.md and config.json, then execute all skills in order."
+    else:
+        _run_step = 'claude --dangerously-skip-permissions "Read CLAUDE.md and execute all skills in order"'
+
+    # Only mention .env when the project actually defines secret fields.
+    if secret_field_ids:
+        _env_step = ("5. Configure secrets in .env:\n"
+                     "   cp .env.example .env\n"
+                     "   # Edit .env and fill in the secret values")
+    else:
+        _env_step = "5. No secrets required — this project defines no secret fields, so .env can be left as-is."
+
     setup = f"""# Setup Instructions for {project['name']}
 
 1. Navigate to this directory
@@ -826,18 +845,16 @@ They are platform-agnostic and work with any AI tool that can read Markdown.
 3. Install dependencies:
    pip install -r requirements.txt
 
-4. Review config.json — verify target paths, URLs, and options
+4. Review config.json — verify the input paths and options
 
-5. Configure .env:
-   cp .env.example .env
-   # Edit .env with your actual credentials
+{_env_step}
 
 6. Start the dashboard (separate terminal):
    python3 run_server.py
    # Open http://localhost:8080
 
-7. Run the agent (YOLO mode):
-   claude --dangerously-skip-permissions "Read CLAUDE.md and understand the project and execute all the agents in order"
+7. Run the agent ({_entry_file}, YOLO mode):
+   {_run_step}
 """
     (project_dir / "setup_instructions.txt").write_text(setup)
     generated_files.append("setup_instructions.txt")
@@ -1164,7 +1181,7 @@ async function saveAndLaunch() {{
     if (platform === 'cursor') {{
       cmd = `Open the project folder in Cursor:\\n  ${{projectDir}}\\n\\nCursor will automatically read .cursorrules and execute the skills.`;
     }} else if (platform === 'codex') {{
-      cmd = `cd ${{projectDir}} && codex "Read AGENTS.md and execute all skills in order"`;
+      cmd = `cd ${{projectDir}} && codex exec --sandbox workspace-write --skip-git-repo-check "Read AGENTS.md and execute all skills in order"`;
     }} else if (platform === 'generic') {{
       cmd = `Open INSTRUCTIONS.md in your AI tool and ask it to:\\n  "Read INSTRUCTIONS.md and config.json, then execute all skills in order"\\n\\nProject path: ${{projectDir}}`;
     }} else {{
