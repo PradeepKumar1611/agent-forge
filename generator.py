@@ -77,6 +77,18 @@ def _build_skill_prompt(project, sub_agents, idx, dashboard_metrics, form_values
         if next_name
         else "This is the **final** skill — write the completion summary and final metrics to the dashboard state."
     )
+    own_artifact = f"artifacts/{_skill_folder_name(name)}.json"
+    prev_artifact = (
+        f"artifacts/{_skill_folder_name(sub_agents[idx - 1].get('name', 'skill'))}.json"
+        if idx > 0 else None
+    )
+    metric_ids = [m.get("id") for m in dashboard_metrics if m.get("id")]
+    handoff_paths = (
+        f"It READS its predecessor's output from `{prev_artifact}` and WRITES its own output to `{own_artifact}`."
+        if prev_artifact else
+        f"It is the FIRST skill (no predecessor artifact to read) and WRITES its output to `{own_artifact}`."
+    )
+
     return f"""You are writing ONE instruction file (a SKILL.md) for skill {idx + 1} of {total} in a multi-skill agent system called "{project['name']}".
 
 Project description: {project.get('description', '')}
@@ -93,21 +105,33 @@ THE SKILL YOU MUST WRITE (#{idx + 1}):
 Dashboard metrics this system tracks:
 {json.dumps(dashboard_metrics, indent=2)}
 
-Form fields (user configuration, read from ../config.json at runtime):
+Form fields (user configuration, read from config.json at runtime):
 {json.dumps(project.get('form_fields', []), indent=2)}
 
 Config values currently provided:
 {json.dumps(form_values, indent=2)}
 
+═══ SHARED DATA CONTRACT — MANDATORY ═══
+Each skill file is written INDEPENDENTLY, so you MUST follow this contract exactly or the skills will not interoperate at runtime:
+- WORKING DIRECTORY: the agent runs from the PROJECT ROOT (the folder containing CLAUDE.md / AGENTS.md and config.json). EVERY path below is relative to the project root. Do NOT assume the current directory is the skill's own folder, and do NOT use `../` to reach project files.
+- CONFIG: read `config.json` (project root) fresh at runtime for all inputs. Secrets come from environment variables / `.env` (UPPERCASE field id). Never hardcode generation-time values.
+- STATE FILE: `logs/dashboard_state.json` — update with read-modify-write (preserve keys you do not own). Its schema is:
+    • top-level scalars: `overall_status` (str), `pipeline_progress` (int 0-100), `error_count` (int), `current_stage` (str)
+    • `steps`: object keyed by step-number STRING ("1".."{total}"); set `steps["{idx + 1}"]["status"]` to pending|running|done|failed for THIS skill.
+    • `logs`: append objects of shape {{"ts","step","level","message"}}.
+    • FLAT METRIC KEYS live at the TOP LEVEL of the state object (NOT nested under any "metrics" key), named EXACTLY by these metric ids: {metric_ids}
+- INTER-SKILL HANDOFF: pass data to later skills ONLY via JSON files in the `artifacts/` directory at the project root (run `mkdir -p artifacts` before writing). {handoff_paths} Do NOT invent other handoff locations and do NOT nest metrics under a "metrics" key.
+═════════════════════════════════════════
+
 Write a deeply detailed, domain-specific instruction file for THIS skill only. It MUST include ALL of these sections:
 
 1. **Title and Description** — what this skill does, in 3-5 sentences.
-2. **Pre-conditions** — what must be true before it runs (prior skill outputs, files, credentials).
-3. **Read Configuration** — MUST read ../config.json at runtime for ALL inputs; never hardcode generation-time values; always reload fresh.
-4. **Detailed Procedure** — step-by-step with ACTUAL bash/python commands (not pseudocode). All paths/URLs/options come from config.json. Include verification commands after each major step.
+2. **Pre-conditions** — what must be true before it runs (the predecessor's artifact file, config, credentials).
+3. **Read Configuration** — MUST read `config.json` (project root) at runtime for ALL inputs; never hardcode generation-time values; always reload fresh.
+4. **Detailed Procedure** — step-by-step with ACTUAL bash/python commands (not pseudocode). Obey the SHARED DATA CONTRACT for EVERY file path (config.json, logs/dashboard_state.json, artifacts/…). Include verification commands after each major step.
 5. **RALPH Self-Healing Loop** — 5 SPECIFIC, DIFFERENT retry strategies tailored to THIS skill's failure modes (retry → alternative method → reduce scope → fix prerequisites → escalate to human via logs/dashboard_state.json).
-6. **Dashboard State Updates** — exact JSON keys to update with python code, updating both this skill's step status (step {idx + 1}) AND the relevant flat metrics.
-7. **Handoff** — {handoff}
+6. **Dashboard State Updates** — exact JSON keys to update with python code, updating both this skill's step status (`steps["{idx + 1}"]`) AND the relevant flat metrics, in `logs/dashboard_state.json`.
+7. **Handoff** — {handoff} (write it to `{own_artifact}` per the contract).
 8. **Known Pitfalls** — failure scenarios specific to this domain.
 
 The file MUST be at least {_MIN_SKILL_LINES} lines of substantive, actionable content — NOT a generic template.

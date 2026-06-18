@@ -620,7 +620,12 @@ function renderForm(fields) {
       if (f.type === 'textarea') {
         input = `<textarea class="form-input" id="field_${f.id}" placeholder="${escHtml(f.placeholder || '')}">${escHtml(f.default || '')}</textarea>`;
       } else if (f.type === 'select') {
-        const opts = (f.options || []).map(o => `<option value="${escHtml(o)}">${escHtml(o)}</option>`).join('');
+        // Use the field's options; if none were provided but a default exists, fall back to it
+        // so the select is never empty. Mark the default (or first option) as selected so the
+        // value is always captured — even when the user never touches the dropdown.
+        const optionVals = (f.options && f.options.length) ? f.options : (f.default ? [f.default] : []);
+        const def = (f.default !== undefined && f.default !== '') ? String(f.default) : String(optionVals[0] || '');
+        const opts = optionVals.map(o => `<option value="${escHtml(o)}" ${String(o) === def ? 'selected' : ''}>${escHtml(o)}</option>`).join('');
         input = `<select class="form-input" id="field_${f.id}">${opts}</select>`;
       } else if (f.type === 'checkbox') {
         input = `<label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="field_${f.id}"> ${escHtml(f.description || '')}</label>`;
