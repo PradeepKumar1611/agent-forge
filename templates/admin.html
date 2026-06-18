@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Agent Factory — Admin</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg-deep:#08090d;--bg-mid:#0e1018;--bg-card:#161822;--bg-input:#1e2030;--accent:#4f7df8;--text:#e2e8f0;--text-dim:#94a3b8;--border:rgba(255,255,255,0.06);--border-light:rgba(255,255,255,0.1);--success:#34d399;--error:#f87171}
+body{background:var(--bg-deep);color:var(--text);font-family:'DM Sans',sans-serif;padding:24px}
+.header{display:flex;align-items:center;justify-content:space-between;margin-bottom:32px;padding-bottom:16px;border-bottom:1px solid var(--border)}
+.header h1{font-size:22px;color:var(--accent)}
+.header a{color:var(--text-dim);text-decoration:none;font-size:14px}.header a:hover{color:var(--text)}
+.container{max-width:800px;margin:0 auto}
+.card{background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:24px;margin-bottom:24px}
+.card h2{font-size:16px;margin-bottom:16px;color:var(--text)}
+table{width:100%;border-collapse:collapse}
+th{text-align:left;font-size:12px;text-transform:uppercase;color:var(--text-dim);letter-spacing:1px;padding:8px 12px;border-bottom:1px solid var(--border)}
+td{padding:10px 12px;border-bottom:1px solid var(--border);font-size:14px}
+.role-admin{color:var(--accent);font-weight:600}.role-user{color:var(--text-dim)}
+.btn{padding:6px 14px;border-radius:6px;border:none;font-size:13px;font-weight:500;cursor:pointer;font-family:'DM Sans',sans-serif}
+.btn-danger{background:rgba(248,113,113,0.1);color:var(--error);border:1px solid rgba(248,113,113,0.3)}.btn-danger:hover{background:rgba(248,113,113,0.2)}
+.btn-primary{background:var(--accent);color:white}.btn-primary:hover{background:#3b6de0}
+.form-row{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap}
+.form-group{display:flex;flex-direction:column;gap:4px;flex:1;min-width:140px}
+.form-group label{font-size:12px;color:var(--text-dim)}
+.form-group input,.form-group select{padding:8px 12px;border-radius:6px;border:1px solid var(--border-light);background:var(--bg-input);color:var(--text);font-size:14px;font-family:'DM Sans',sans-serif}
+.form-group input:focus{outline:none;border-color:var(--accent)}
+.toast{position:fixed;top:20px;right:20px;padding:12px 20px;border-radius:8px;font-size:13px;font-weight:500;z-index:100;opacity:0;transition:opacity .3s}
+.toast.show{opacity:1}.toast-ok{background:#065f46;color:var(--success);border:1px solid var(--success)}.toast-err{background:#7f1d1d;color:var(--error);border:1px solid var(--error)}
+.empty{text-align:center;color:var(--text-dim);padding:20px;font-size:14px}
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <h1>Admin Panel</h1>
+    <a href="/">Back to Agent Factory</a>
+  </div>
+
+  <div id="toast" class="toast"></div>
+
+  <!-- Add User -->
+  <div class="card">
+    <h2>Add New User</h2>
+    <div class="form-row">
+      <div class="form-group"><label>Username</label><input type="text" id="new-username" placeholder="johndoe"></div>
+      <div class="form-group"><label>Display Name</label><input type="text" id="new-name" placeholder="John Doe"></div>
+      <div class="form-group"><label>Password</label><input type="password" id="new-password" placeholder="minimum 4 chars"></div>
+      <div class="form-group"><label>Role</label><select id="new-role"><option value="user">User</option><option value="admin">Admin</option></select></div>
+      <button class="btn btn-primary" onclick="addUser()">Add User</button>
+    </div>
+  </div>
+
+  <!-- User List -->
+  <div class="card">
+    <h2>Users</h2>
+    <table>
+      <thead><tr><th>Username</th><th>Name</th><th>Role</th><th>Created</th><th></th></tr></thead>
+      <tbody id="user-list"></tbody>
+    </table>
+  </div>
+
+  <!-- Activity Log -->
+  <div class="card">
+    <h2>Recent Activity</h2>
+    <div id="activity-log" class="empty">Loading...</div>
+  </div>
+</div>
+
+<script>
+function showToast(msg, ok) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast show ' + (ok ? 'toast-ok' : 'toast-err');
+  setTimeout(() => t.className = 'toast', 3000);
+}
+
+async function loadUsers() {
+  const r = await fetch('/api/admin/users');
+  if (!r.ok) { window.location.href = '/'; return; }
+  const users = await r.json();
+  const tbody = document.getElementById('user-list');
+  tbody.innerHTML = users.map(u => `
+    <tr>
+      <td><strong>${u.username}</strong></td>
+      <td>${u.name}</td>
+      <td><span class="role-${u.role}">${u.role}</span></td>
+      <td style="color:var(--text-dim);font-size:12px">${u.created ? u.created.split('T')[0] : ''}</td>
+      <td>${u.username === 'admin' ? '' : `<button class="btn btn-danger" onclick="deleteUser('${u.username}')">Delete</button>`}</td>
+    </tr>
+  `).join('');
+}
+
+async function addUser() {
+  const username = document.getElementById('new-username').value.trim();
+  const name = document.getElementById('new-name').value.trim();
+  const password = document.getElementById('new-password').value;
+  const role = document.getElementById('new-role').value;
+  if (!username || !password) { showToast('Username and password required', false); return; }
+  const r = await fetch('/api/admin/users', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({username, name, password, role})
+  });
+  const d = await r.json();
+  showToast(d.message, r.ok);
+  if (r.ok) {
+    document.getElementById('new-username').value = '';
+    document.getElementById('new-name').value = '';
+    document.getElementById('new-password').value = '';
+    loadUsers();
+  }
+}
+
+async function deleteUser(username) {
+  if (!confirm(`Delete user "${username}"?`)) return;
+  const r = await fetch(`/api/admin/users/${username}`, {method: 'DELETE'});
+  const d = await r.json();
+  showToast(d.message, r.ok);
+  loadUsers();
+}
+
+async function loadActivity() {
+  const r = await fetch('/api/admin/activity');
+  if (!r.ok) return;
+  const lines = await r.json();
+  const el = document.getElementById('activity-log');
+  if (!lines.length) { el.innerHTML = '<div class="empty">No activity yet</div>'; return; }
+  el.innerHTML = '<table><thead><tr><th>Time</th><th>User</th><th>Action</th><th>Project</th><th>Query</th></tr></thead><tbody>' +
+    lines.reverse().map(l => `<tr>
+      <td style="font-size:12px;color:var(--text-dim);white-space:nowrap">${l.ts ? l.ts.replace('T',' ').split('.')[0] : ''}</td>
+      <td><strong>${l.user||''}</strong></td>
+      <td>${l.action||''}</td>
+      <td style="font-size:12px;font-family:'IBM Plex Mono',monospace">${l.project_id||''}</td>
+      <td style="font-size:12px;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${l.query||''}</td>
+    </tr>`).join('') + '</tbody></table>';
+}
+
+loadUsers();
+loadActivity();
+</script>
+</body>
+</html>

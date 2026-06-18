@@ -1,0 +1,13 @@
+.env
+users.json
+agent_factory.db
+agent_factory.db-shm
+agent_factory.db-wal
+.claude/settings.local.json
+logs/
+generated_projects/
+__pycache__/
+*.pyc
+venv/
+.playwright-mcp/
+test-screenshots/

@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Agent Factory — Login</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#08090d;color:#e2e8f0;font-family:'DM Sans',sans-serif;display:flex;align-items:center;justify-content:center;height:100vh}
+.login-card{background:#12131a;border:1px solid rgba(255,255,255,0.06);border-radius:16px;padding:40px;width:380px;text-align:center}
+.logo{font-size:40px;margin-bottom:8px}
+h1{font-size:22px;font-weight:700;margin-bottom:4px;background:linear-gradient(135deg,#4f7df8,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.subtitle{color:#64748b;font-size:13px;margin-bottom:28px}
+.form-group{margin-bottom:16px;text-align:left}
+.form-group label{display:block;font-size:12px;color:#94a3b8;margin-bottom:6px;font-weight:500}
+.form-group input{width:100%;padding:12px 16px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);background:#1e2030;color:#e2e8f0;font-size:14px;font-family:'DM Sans',sans-serif}
+.form-group input:focus{outline:none;border-color:#4f7df8}
+.btn{width:100%;padding:12px;border-radius:8px;border:none;background:#4f7df8;color:white;font-size:15px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;margin-top:8px;transition:background .2s}
+.btn:hover{background:#3b6de0}
+.btn:disabled{opacity:0.5;cursor:not-allowed}
+.error{color:#f87171;font-size:13px;margin-top:12px;display:none}
+</style>
+</head>
+<body>
+<div class="login-card">
+  <div class="logo">&#127981;</div>
+  <h1>Agent Factory</h1>
+  <div class="subtitle">Sign in to design multi-agent systems</div>
+  <form onsubmit="doLogin(event)">
+    <div class="form-group">
+      <label>Username</label>
+      <input type="text" id="username" autofocus required>
+    </div>
+    <div class="form-group">
+      <label>Password</label>
+      <input type="password" id="password" required>
+    </div>
+    <button class="btn" type="submit" id="loginBtn">Sign In</button>
+  </form>
+  <div class="error" id="error"></div>
+</div>
+<script>
+async function doLogin(e) {
+  e.preventDefault();
+  const btn = document.getElementById('loginBtn');
+  const err = document.getElementById('error');
+  btn.disabled = true; btn.textContent = 'Signing in...'; err.style.display = 'none';
+  try {
+    const r = await fetch('/api/auth/login', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({username: document.getElementById('username').value, password: document.getElementById('password').value})
+    });
+    const d = await r.json();
+    if (r.ok) { window.location.href = '/'; }
+    else { err.textContent = d.error || 'Login failed'; err.style.display = 'block'; }
+  } catch(ex) { err.textContent = 'Connection error'; err.style.display = 'block'; }
+  btn.disabled = false; btn.textContent = 'Sign In';
+}
+</script>
+</body>
+</html>
